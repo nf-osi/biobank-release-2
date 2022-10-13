@@ -1,0 +1,77 @@
+---
+title: "get-data-somatic-snv"
+author: "Jineta Banerjee"
+date: "2022-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+
+library(reticulate)
+
+```
+
+```{python login_to_synapse, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+
+```
+
+## get SNV merged file
+
+```{python mergedmaf, eval = FALSE}
+
+mergedmaf = syn.get("syn36553188", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data")
+
+```
+
+## get clinical data
+
+```{python clinical_data_from_tables, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+import pandas as pd
+
+#get clinical annotations
+query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing' ) AND (individualID = 'JH-2-055' OR individualID = 'JH-2-002' OR individualID = 'JH-2-023' OR individualID = 'JH-2-045' OR individualID = 'JH-2-084' OR individualID = 'JH-2-015' OR individualID = 'JH-2-016' OR individualID = 'JH-2-031') "
+
+jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
+jhu_triplicates_clinicaldata.columns
+
+```
+
+```{r maf file}
+
+#convert specimenID column to Tumor_Sample_Barcode
+py$jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- py$jhu_triplicates_clinicaldata$specimenID
+
+somatic_snv <- maftools::read.maf(maf = "/Users/jineta/git/gitrepo/biobank-release-2/data/syn4939902-SomaticVariants-Mutect2.merged.maf", 
+                                  clinicalData = py$jhu_triplicates_clinicaldata)
+
+```
+
+

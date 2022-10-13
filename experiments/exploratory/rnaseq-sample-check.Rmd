@@ -1,0 +1,222 @@
+---
+title: "Sample Check Report"
+author:
+- affiliation: Sage Bionetworks
+  affiliation_url: https://sagebionetworks.org/
+  name: Jineta Banerjee
+  url: null
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    fig_width: 10
+    fig_height: 10
+    fig_caption: true
+    df_print: paged 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+library(BiocManager)
+library(gProfileR)
+library(tidyverse)
+library(ggfortify)
+library(pheatmap)
+library(glue)
+library(edgeR)
+library(limma)
+library(DT)
+library(glue)
+#library(tximport)
+library(ggfortify)
+library(reticulate)
+library(ggrepel)
+```
+
+```{python login_to_synapse, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+
+```
+
+### Summary
+
+This document contains a simple check for NF-OSI processed RNAseq files. It contains the following:
+
+-   A principal component analysis plot with all the samples
+-   A table with raw counts of housekeeping genes in the samples
+
+ 
+
+### Sample identity of files being checked
+
+*Fill in the values for each sample sheet*
+
+-   Study : [JHU Biospecimen Repository](https://www.synapse.org/#!Synapse:syn4939902/wiki/235907)
+-   Samples : Batch 1, Batch 2, Batch 3
+-   MultiQC reports : [Batch 1 and 2](https://www.synapse.org/#!Synapse:syn30841416), [Batch 3](https://www.synapse.org/#!Synapse:syn37186197)
+
+ 
+
+```{python clinical_data_from_tables, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+## get clinical data
+import pandas as pd
+
+#get clinical annotations
+query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'rnaSeq' ) "
+
+metadata = syn.tableQuery(query).asDataFrame()
+```
+
+```{r load data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+batch1plus2 <- read.table("/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch1-batch2/salmon.merged.gene_counts.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
+batch3 <- read.table("/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch3/salmon.merged.gene_counts.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
+
+totalcounts <- merge(batch1plus2, batch3, by= c("gene_id", "gene_name"))
+rownames(totalcounts) <- totalcounts$gene_id
+
+# gene to ensg mapping
+gene_2_ensg <- as.data.frame(totalcounts$gene_name)
+gene_2_ensg$ensg <- rownames(totalcounts)
+gene_2_ensg <- gene_2_ensg %>% unique()
+
+#remove gene_name column
+totalcounts_mat <- totalcounts[,c(3:length(colnames(totalcounts)))] 
+colnames(totalcounts_mat) <- sub("X", "", colnames(totalcounts_mat))
+colnames(totalcounts_mat) <- sub("\\.", "-", colnames(totalcounts_mat))
+
+
+#check if all names match the samples
+#all((py$metadata$specimenID) %in% colnames(totalcounts_mat))
+
+gene_mat<-as.matrix(totalcounts_mat)
+rownames(gene_mat) <- totalcounts$gene_name
+
+#remove duplicate rows, keep rows with max gene expression
+no_dupes_gene_mat <- aggregate(gene_mat, by=list(rownames(gene_mat)), FUN=max)
+
+# Toggle this line to remove low expressed genes
+keepRows <- rowSums((no_dupes_gene_mat[,]) >= 1) >= (ncol(no_dupes_gene_mat[,])*0.1)
+#table(keepRows)
+no_dupes_gene_mat <- no_dupes_gene_mat[keepRows,]
+
+rownames(no_dupes_gene_mat) <- no_dupes_gene_mat$Group.1 
+no_dupes_gene_mat <- no_dupes_gene_mat %>%  
+  dplyr::select(-"Group.1")
+
+```
+
+### Principal component analysis:
+
+The plot below visualizes the distribution of samples **without** any normalization or batch correction. Samples are labeled with their specimenIDs (as present in Synapse metadata) for easy identification.
+
+```{r PCA, eval= TRUE, echo= FALSE, results='show', message=FALSE, warning=FALSE}
+
+## PCA to look at how the datasets differ
+
+make_pca_plot <- function(pca_mat){
+  
+  pca_res <- stats::prcomp(t(pca_mat),scale=TRUE) 
+  var_explained <- pca_res$sdev^2/sum(pca_res$sdev^2)
+  results <- as.data.frame(pca_res$x)
+
+results$specimenID <- rownames(results)
+# anno <- py$metadata %>% 
+#     dplyr::select("specimenID", "tumorType", "sex", "individualID")
+#   
+# plot_data <- merge(results, anno) 
+
+plot_data <- results
+
+plot_image_no_label <- plot_data %>% 
+     ggplot(aes(x=PC1, y=PC2)) + 
+    geom_point(size=2) +
+  labs(x=paste0("Variance along Principal Component 1: ",round(var_explained[1]*100,1),"%"),
+       y=paste0("Variance along Principal Component 2: ",round(var_explained[2]*100,1),"%"))
+  theme_bw()+
+  theme(legend.text = element_text(size=20), 
+              axis.text.x  = element_text(size=60, angle = 0),
+              axis.text.y = element_text(size=60),
+              text = element_text(size=40),
+              strip.text.x = element_text(size = 40),
+              legend.position="right",
+              panel.grid = element_blank(),
+              panel.background = element_rect(fill = "white"))
+  
+  plot_image_labeled <- plot_image_no_label +
+    geom_label_repel(aes(label=specimenID), size = 2, max.overlaps = 30)
+  
+  return(list(plot_image_no_label, plot_image_labeled))
+
+}
+
+make_pca_plot(no_dupes_gene_mat)
+```
+
+ 
+## PCA after normalizing library sizes using TMM method
+
+```{r TMM-LCPM normalization, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+
+# TMM normalization
+DGE.all <- DGEList(no_dupes_gene_mat)
+norm_factors <- calcNormFactors(DGE.all$counts, method = "TMM") %>% as.data.frame()  # function from edgeR
+
+# make a normalized counts matrix for use outside of limma (PCA, etc)
+#print("Normalization factors for the first few libraries:")
+#head(DGE.all$samples, n=20)
+DGE.all$samples[, "norm.factors"] <- norm_factors
+normCounts.all <- as.data.frame(t(t(DGE.all$counts/DGE.all$samples$norm.factors)))
+finalDGE.all <- DGEList(counts=normCounts.all)
+
+# transform normalized counts into logCPM counts for visualization
+lcpm.normCounts <- edgeR::cpm(finalDGE.all, log=TRUE, prior.count = 1)
+
+# plot
+make_pca_plot(lcpm.normCounts)
+
+```
+
+ 
+
+### Raw counts of few housekeeping genes:
+
+A glance at the raw counts of some housekeeping genes in the samples:
+
+```{r gene table 1, eval=TRUE, echo=FALSE, results='show', message=FALSE, warning=FALSE}
+
+selected_genes <- c("GAPDH", "ACTB", "SDHA", "TFRC", "GUSB", "TBP", "PGK1")
+no_dupes_gene_mat %>% t() %>% 
+  as.data.frame() %>% 
+  dplyr::select(all_of(selected_genes)) %>% 
+  DT::datatable()
+  
+```
+
+
+```{r gene table 2, eval=FALSE, echo=FALSE}
+
+## Raw counts of genes after library normalization using TMM method
+
+normCounts.all %>% t() %>% 
+  as.data.frame() %>% 
+  dplyr::select(c(selected_genes))
+  
+```

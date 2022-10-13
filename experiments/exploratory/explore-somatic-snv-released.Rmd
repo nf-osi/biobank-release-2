@@ -1,0 +1,97 @@
+---
+title: "explore_somatic_snv"
+author: "Jineta Banerjee"
+date: "2022-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+
+library(reticulate)
+
+```
+
+```{r get-data, eval=FALSE}
+
+source("/Users/jineta/git/gitrepo/biobank-release-2/data/get-data-somatic-snv.Rmd")
+```
+
+```{r colors, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+#Changing colors for variant classifications 
+coolors1 = c("#ca054d", "#3b1c32", "#a4d4b4", "#ffcf9c", "#007EA7", "#EAF27C", "#F2AA7E", "#9984D4", "#C5979D")
+names(coolors1) = c('Frame_Shift_Del',
+                       'Frame_Shift_Ins',
+                       'Nonsense_Mutation', 
+                       'Multi_Hit', 
+                       'Missense_Mutation',
+                       'In_Frame_Ins', 
+                       'Splice_Site', 
+                       'In_Frame_Del')
+coolors1 <- list(coolors1)
+                       
+coolors2 = c("#F7F7FF", "#C49991", "#279AF1", "#60656F", "#131112", "#1F2041", "#4B3F72", "#69306D", "#0E103D",
+              "#D1CA98", "#EDBF85", "#F7F06D", "#FFB140", "#C6D4FF", "#7A82AB", "#942911", "#012A36", "#7E52A0", 
+              "#F1DEDE", "#904E55", "#8CFF98", "#AAD922", "#E71D36", "#A1674A", "#8EE3F5", "#70CAD1", "#3E517A", 
+              "#D33F49", "#002642", "#F9DC5C", "#3185FC", "#87A0B2", "#5BC0BE", "#7371FC", "#D9C5B2", "#F1D302", "#FE7F2D")
+sampleID <- as.factor(py$jhu_triplicates_clinicaldata$individualID)
+names(coolors2) = levels(sampleID)
+coolors2 <- list(coolors2)
+
+
+coolors3 <- c("#0D3B66", "#F4D35E", "#EE964B", "#61C9A8", "#BA3B46", "#f05365")
+tumortypes <- as.factor(py$jhu_triplicates_clinicaldata$tumorType)
+names(coolors3) <- levels(tumortypes)
+coolors3 <- list(coolors3)
+
+color_list <- c(coolors1, coolors2, coolors3)
+
+```
+&nbsp;
+
+```{r gene-list}
+
+# Make genelist
+gene_list <- c("NF1","NF2", "TP53", "CDKN2A", "EED", "SUZ12",
+                   "EZH2", "CHD4", "EPC1", "ASTE1", "DAXX", "ATRX", "PCLO", "SPRED1",
+                  "MTAP", "PREX2", "NCOA2", "BCL2L1", "TYK2", "BRAF", "ERBB1", "LRP1B", "MSH3", "USP9X",
+                  "TSC2", "PBRM1", "FLCN", "CSF3R", "CSF1R", "CNKSR1", "ATR", "SETDB1", "RNF43", "RAD21","PTPN11",
+                  "PRDM1", "PML", "MSI2", "PIK3CA", "KIT", "PDGFRA", "FGFR1", "RASSF9", "TGFB1",
+                  "HLA-B", "GNAS", "EPHB6", "CNBP", "BRCA2", "ATM", "AMER1", "BRAF1", "PMS2",
+                  "B2M", "HLA-A", "HLA-C", "HLA-E", "HLA-F", "HLA-G", "HLA-H", "TAP2", "STK11",
+                  "BLM", "DNM2", "ETV6", "IGF1R", "KMT2B", "NLRP1", "TRAF3", "CCN6")
+
+```
+
+```{r oncoplot, fig.height= 20, fig.width=20}
+
+pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/test-oncoplot.pdf")
+oncoplot(somatic_snv, genes = gene_list, 
+         drawRowBar = FALSE, showTumorSampleBarcodes = TRUE,
+           SampleNamefont = 5,annotationFontSize = 1.8, fontSize = 1.8,legendFontSize = 1.8,
+           sepwd_genes = 3.5, sepwd_samples = 3.5, #titleText = sampleID,
+           titleFontSize = 1.5, keepGeneOrder = TRUE, bgCol = "white", borderCol = "white", fill = TRUE)
+  #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
+dev.off()
+
+```

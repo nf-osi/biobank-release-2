@@ -1,0 +1,65 @@
+---
+title: "get-data-rnaseq"
+author: "Jineta Banerjee"
+date: "2022-09-23"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+
+library(reticulate)
+
+```
+
+```{python login_to_synapse, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+
+```
+
+## get rnaseq tsv file
+
+```{python mergedmaf, eval = FALSE}
+
+syn.get("syn30845251", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch1-batch2") #batch1plus2
+syn.get("syn37187736", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch3") #batch3
+
+```
+
+## get clinical data
+
+```{python clinical_data_from_tables, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+import pandas as pd
+
+#get clinical annotations
+query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'rnaSeq' ) "
+
+jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
+jhu_triplicates_clinicaldata.columns
+
+```
