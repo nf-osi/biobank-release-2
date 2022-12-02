@@ -37,8 +37,7 @@ library(reticulate)
 import synapseclient
 syn = synapseclient.Synapse()
 
-syn.login(email= "jineta.banerjee",
-                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+syn.login()
 
 ```
 
