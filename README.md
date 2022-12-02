@@ -1,24 +1,7 @@
 # Git + GitHub As A Platform For Reproducible Research 
 
 ## Overview
-This repository sets out the skeleton of an organizational structure used for scientific research. It loosely follows what I have used for several of my research projects and I hope it inspires you to conduct your research in an open, reproducible, and honest manner.
-
-## How to Use
-To use this template for your research, fork this repository, change the name
-to something descriptive for your project, and adjust the licensing as you
-see fit.
-
-To use this repository for your own research, simply click "Use this template" 
-at the top of this page
-
-> :warning: :warning: :warning: I wouldn't advise forking this repository. As you can only fork a given repository once, there is little utility in forking this repo if you hope to use it again in your future projects :warning: :warning: :warning:
-
-Alternatively, you can clone the repository and restructure as necessary. Via 
-the command line,
-
-```
-> git clone git@github.com:gchure/reproducible_research
-```
+This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release.
 ## Layout
 
 The repository is split into seven main directories, many of which have subdirectories. This structure has been designed to be easily navigable by humans and computers alike, allowing for rapid location of specific files and instructions. Within each directory is a `README.md` file which summarizes the purpose of that directory as well as some examples where necessary. This structure may not be perfect for your intended us and may need to be modified. Each section is briefly described below. 
@@ -32,6 +15,7 @@ Where all of the experimental information lives, including any *executed* code. 
 
 ### **`data`** 
 All raw data collected from your experiments as well as copies of the transformed data from your processing code. 
+The data folder is currently in gitignore but can be added in when appropriate.
 
 ### **`miscellaneous`** 
 Files that may not be code, but are important for reproducibility of your findings.

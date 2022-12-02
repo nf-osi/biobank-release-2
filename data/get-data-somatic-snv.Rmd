@@ -46,7 +46,9 @@ syn.login(email= "jineta.banerjee",
 
 ```{python mergedmaf, eval = FALSE}
 
-mergedmaf = syn.get("syn36553188", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data")
+#mergedmaf = syn.get("syn36553188", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data")
+
+#Download files using get-data-somatic-snv.ipynb script
 
 ```
 
@@ -57,7 +59,7 @@ mergedmaf = syn.get("syn36553188", downloadLocation = "/Users/jineta/git/gitrepo
 import pandas as pd
 
 #get clinical annotations
-query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing' ) AND (individualID = 'JH-2-055' OR individualID = 'JH-2-002' OR individualID = 'JH-2-023' OR individualID = 'JH-2-045' OR individualID = 'JH-2-084' OR individualID = 'JH-2-015' OR individualID = 'JH-2-016' OR individualID = 'JH-2-031') "
+query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing' ) "
 
 jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
 jhu_triplicates_clinicaldata.columns
@@ -69,9 +71,34 @@ jhu_triplicates_clinicaldata.columns
 #convert specimenID column to Tumor_Sample_Barcode
 py$jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- py$jhu_triplicates_clinicaldata$specimenID
 
-somatic_snv <- maftools::read.maf(maf = "/Users/jineta/git/gitrepo/biobank-release-2/data/syn4939902-SomaticVariants-Mutect2.merged.maf", 
-                                  clinicalData = py$jhu_triplicates_clinicaldata)
+jhu_triplicates_clinicaldata <- py$jhu_triplicates_clinicaldata
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- stringr::str_replace_all(jhu_triplicates_clinicaldata$Tumor_Sample_Barcode," ","_")
+
+# clean up names
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-015 Malignant Peripheral Nerve Sheath Tumor"] <- "2_015_Malignant_Peripheral_Nerve_Sheath_Tumor_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-016 Malignant Peripheral Nerve Sheath Tumor"] <- "2_016_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-009 Neurofibroma"] <- "2_009_Neurofibroma_TD"
 
 ```
+
+```{r read_maf}
+
+files <- (Sys.glob("/Users/jineta/git/gitrepo/biobank-release-2/data/somatic_snv_batch1_2_3/*.maf"))
+
+listOfFiles <- lapply(files, function(x) maftools::read.maf(maf = x,
+                                                            clinicalData = jhu_triplicates_clinicaldata)) 
+
+somatic_snv <- maftools::merge_mafs(listOfFiles)
+
+
+```
+
+We are missing annotations for 
+  2_015_TD
+  
+
 
 
