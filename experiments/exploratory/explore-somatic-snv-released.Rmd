@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Install all packages required for the analysis
 ```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
 
 #library(synapser)
@@ -31,10 +32,14 @@ library(reticulate)
 
 ```
 
-```{r get-data, eval=FALSE}
+
+## Download the data from Synapse
+
+```{r get-data, eval=FALSE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
 
 source("/Users/jineta/git/gitrepo/biobank-release-2/data/get-data-somatic-snv.Rmd")
 ```
+
 
 ```{r colors, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
 
@@ -67,8 +72,10 @@ coolors3 <- list(coolors3)
 color_list <- c(coolors1, coolors2, coolors3)
 
 ```
+
 &nbsp;
 
+## Make a list of genes of interest
 ```{r gene-list}
 
 # Make genelist
@@ -84,6 +91,9 @@ gene_list <- c("NF1","NF2",
 
 ```
 
+&nbsp;
+
+## Visualize an oncoplot of all samples available
 
 ```{r oncoplot, fig.height= 40, fig.width=40}
 
@@ -98,6 +108,10 @@ oncoplot(somatic_snv, genes = gene_list,
 
 ```
 
+&nbsp;
+
+## Subset the samples to select PNF and MPNST samples
+
 ```{r subset maf}
 
 mpnst_tsb <- jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$tumorType == "Malignant Peripheral Nerve Sheath Tumor"]
@@ -111,6 +125,10 @@ pnf_maf <- maftools::subsetMaf(maf = somatic_snv,
                                  tsb = pnf_tsb)
 
 ```
+
+&nbsp;
+
+## Visualize oncoplots of PNF and MPNST samples
 
 ```{r co-oncoplot, fig.height= 40, fig.width=40}
 
@@ -136,3 +154,5 @@ maftools::coOncoplot(m1 = pnf_maf,
 #dev.off()
 
 ```
+
+&nbsp;
