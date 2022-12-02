@@ -1,4 +1,4 @@
-# Git + GitHub As A Platform For Reproducible Research 
+# JHU Biobank Data Release Phase 2 
 
 ## Overview
 This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release.
