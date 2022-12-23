@@ -1,0 +1,212 @@
+---
+title: "get-all-mafs"
+author: "Jineta Banerjee"
+date: "2022-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+
+library(reticulate)
+
+```
+
+```{r get-mafs}
+
+synLogin()
+all_synid <- read.csv("/home/rstudio/data/biobank-release-2/data/Germline_MAF_metadata.csv")
+
+# for (id in all_synid$id){
+#   synapser::synGet(id, downloadLocation = "/home/rstudio/data/biobank-release-2/data/germline_mafs/")
+# }
+
+```
+
+```{r color_list}
+#Changing colors for variant classifications 
+coolors = c("#ca054d", "#3b1c32", "#a4d4b4", "#ffcf9c", "#007EA7", "#EAF27C", "#F2AA7E", "#9984D4", "#C5979D")
+names(coolors) = c('Frame_Shift_Del',
+                       'Frame_Shift_Ins',
+                       'Nonsense_Mutation', 
+                       'Multi_Hit', 
+                       'Missense_Mutation',
+                       'In_Frame_Ins', 
+                       'Splice_Site', 
+                       'In_Frame_Del')
+
+fabcolors = RColorBrewer::brewer.pal(n = 11,name = 'RdGy')
+col = RColorBrewer::brewer.pal(n = 10,name = 'PRGn')
+allcolors <- c(fabcolors, col)
+sampleID <- clindata$Tumor_Sample_Barcode
+names(allcolors) = c(sampleID)
+allcolors <- list(allcolors)
+
+morecolors1 <- wes_palette("Darjeeling1", n=4, type = "discrete")
+tumortypes <- clindata$tumorType
+names(morecolors1) <- c(tumortypes)
+morecolors1 <- list(morecolors1)
+
+color_list <- c(coolors, allcolors, morecolors1)
+```
+
+
+```{r clindata}
+
+query_triad <- "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing' ) AND (individualID = 'JH-2-055' OR individualID = 'JH-2-002' OR individualID = 'JH-2-023' OR individualID = 'JH-2-045' OR individualID = 'JH-2-084' OR individualID = 'JH-2-015' OR individualID = 'JH-2-016' OR individualID = 'JH-2-031') "
+
+query_all <- "SELECT distinct specimenID, tumorType FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing' )"
+
+all_clindata <- synapser::synTableQuery(query_all)$asDataFrame()
+
+all_clindata <- read_csv("/home/rstudio/data/biobank-release-2/data/all_WES-specimenIDs.csv")
+
+clindata <- all_synid %>% dplyr::select(c("individualID", "specimenID", "sex"))
+
+clindata$specimenID <- gsub(" ", "_", clindata$specimenID)
+for (i in 1:length(clindata$specimenID)){
+  clindata$mafpath[i] <-  glue("/home/rstudio/data/biobank-release-2/data/germline_mafs/", clindata$specimenID[i],".maf")
+}
+
+clindata <- merge(clindata, all_clindata, by = "specimenID")
+clindata$tumorType[clindata$tumorType == "Not Applicable"] <- "Normal"
+clindata$Tumor_Sample_Barcode <- clindata$specimenID 
+
+```
+
+```{r read-maf, fig.height=40, fig.width=20}
+
+goi <- c("NF1","NF2", "TP53", "CDKN2A", "EED", "SUZ12",
+                   "EZH2", "CHD4", "EPC1", "ASTE1", "DAXX", "ATRX", "PCLO", "SPRED1",
+                  "MTAP", "PREX2", "NCOA2", "BCL2L1", "TYK2", "BRAF", "ERBB1", "LRP1B", "MSH3", "USP9X",
+                  "TSC2", "PBRM1", "FLCN", "CSF3R", "CSF1R", "CNKSR1", "ATR", "SETDB1", "RNF43", "RAD21","PTPN11",
+                  "PRDM1", "PML", "MSI2", "PIK3CA", "KIT", "PDGFRA", "FGFR1", "RASSF9", "TGFB1",
+                  "HLA-B", "GNAS", "EPHB6", "CNBP", "BRCA2", "ATM", "AMER1", "BRAF1", "PMS2",
+                  "B2M", "HLA-A", "HLA-C", "HLA-E", "HLA-F", "HLA-G", "HLA-H", "TAP2", "STK11",
+                  "BLM", "DNM2", "ETV6", "IGF1R", "KMT2B", "NLRP1", "TRAF3", "CCN6")
+
+```
+
+```{r mpnst_oncoplot, fig.height=20, fig.width=20}
+
+mpnst_samples <- clindata$mafpath[clindata$tumorType == "Malignant Peripheral Nerve Sheath Tumor"] %>% 
+  na.omit() 
+
+ldf_mpnst <- lapply(mpnst_samples, 
+                    maftools::read.maf, 
+                    clinicalData = clindata[(clindata$tumorType == "Malignant Peripheral Nerve Sheath Tumor"),])
+
+merged_maf_mpnst <- maftools::merge_mafs(ldf_mpnst)
+
+# Filter MAFs for AFs < 0.01
+merged_maf_mpnst@data <- merged_maf_mpnst@data[(merged_maf_mpnst@data$gnomADg_AF < 0.01), ]
+# Filter MAFs for pathogenic vars
+merged_maf_mpnst@data <- merged_maf_mpnst@data[(merged_maf_mpnst@data$IMPACT == "HIGH"), ]
+
+#------- filtered High impact variants but still need to generate figures--------
+
+#pdf("/home/rstudio/data/biobank-release-2/experiments/figures/germline_topgenes_mpnst.pdf", width=40, height = 40)
+oncoplot(merged_maf_mpnst, top=100, draw_titv = TRUE, 
+         clinicalFeatures = c("Tumor_Sample_Barcode", "tumorType"),
+         sortByAnnotation = TRUE,
+         annotationFontSize = 1.8, fontSize = 1.8,legendFontSize = 1.8,
+           sepwd_genes = 3.5, sepwd_samples = 3.5)
+#dev.off()
+
+pdf("/home/rstudio/data/biobank-release-2/experiments/figures/germline_genes_of_int_mpnst.pdf", width=40, height = 40)
+oncoplot(merged_maf_mpnst, genes = goi,
+           drawRowBar = TRUE, drawColBar = TRUE,
+           clinicalFeatures = c("Tumor_Sample_Barcode", "tumorType"),
+           sortByAnnotation = TRUE, groupAnnotationBySize = FALSE, GeneOrderSort = TRUE,
+           removeNonMutated = FALSE, logColBar = FALSE,
+           SampleNamefont = 5,annotationFontSize = 1.8, fontSize = 1.8,legendFontSize = 1.8,
+           sepwd_genes = 3.5, sepwd_samples = 3.5,
+           titleFontSize = 1.5, keepGeneOrder = TRUE, bgCol = "white", borderCol = "white", fill = TRUE)
+dev.off()
+
+```
+
+```{r pnf_oncoplot, fig.height=20, fig.width=20}
+
+pnf_samples <- clindata$mafpath[clindata$tumorType == "Plexiform Neurofibroma"] %>% na.omit()
+ldf_pnf <- lapply(pnf_samples, 
+                    maftools::read.maf, clinicalData = clindata[(clindata$tumorType == "Plexiform Neurofibroma"),])
+merged_maf_pnf <- maftools::merge_mafs(ldf_pnf)
+
+# Filter MAFs for AFs < 0.01
+merged_maf_pnf@data <- merged_maf_pnf@data[(merged_maf_pnf@data$gnomADg_AF < 0.01), ]
+
+pdf("/home/rstudio/data/biobank-release-2/experiments/figures/germline_topgenes_pnf.pdf", width=40, height = 40)
+oncoplot(merged_maf_pnf, top=100, draw_titv = TRUE, 
+         clinicalFeatures = c("Tumor_Sample_Barcode", "tumorType"),
+         sortByAnnotation = TRUE,
+         annotationFontSize = 1.8, fontSize = 1.8,legendFontSize = 1.8,
+           sepwd_genes = 3.5, sepwd_samples = 3.5)
+dev.off()
+
+pdf("/home/rstudio/data/biobank-release-2/experiments/figures/germline_genes_of_int_pnf.pdf", width=40, height = 40)
+oncoplot(merged_maf_pnf, genes = goi,
+           drawRowBar = TRUE, drawColBar = TRUE,
+           clinicalFeatures = c("Tumor_Sample_Barcode", "tumorType"),
+           sortByAnnotation = TRUE, groupAnnotationBySize = FALSE, GeneOrderSort = TRUE,
+           removeNonMutated = FALSE, logColBar = FALSE,
+           SampleNamefont = 5,annotationFontSize = 1.8, fontSize = 1.8,legendFontSize = 1.8,
+           sepwd_genes = 3.5, sepwd_samples = 3.5,
+           titleFontSize = 1.5, keepGeneOrder = TRUE, bgCol = "white", borderCol = "white", fill = TRUE)
+dev.off()
+
+pdf("/home/rstudio/data/biobank-release-2/experiments/figures/germline_genes_of_int_cooncoplot.pdf", width=40, height = 40)
+coOncoplot(merged_maf_pnf, merged_maf_mpnst, genes = goi,
+           removeNonMutated = FALSE, 
+           clinicalFeatures1 = merged_maf_pnf@clinical.data,
+           clinicalFeatures2 = merged_maf_mpnst@clinical.data,
+           SampleNamefont = 5,annotationFontSize = 5, legendFontSize = 1.8)
+dev.off()
+```
+
+
+```{r lollipop, fig.height=8, fig.width=8}
+
+lollipopPlot2(merged_maf_mpnst, merged_maf_pnf, 
+              gene = "NF1",
+      labPosSize = 5,
+      showDomainLabel = TRUE,
+      refSeqID = NULL,
+      proteinID = NULL,
+      legendTxtSize = 5,
+      labPosAngle = 45,
+      domainLabelSize = 2,
+      axisTextSize = c(1, 1),
+      colors = coolors,
+      pointSize = 5)
+
+
+```
+
+```{r mafcompare, echo=FALSE, eval=TRUE, message=FALSE, fig.height=8, fig.height=8}
+
+comparison <- mafCompare(m1 = merged_maf_pnf, m2 = merged_maf_mpnst, m1Name = 'PNF', m2Name = 'MPNST', minMut = 5)
+
+forestPlot(mafCompareRes = comparison, pVal = 0.01, geneFontSize = 3, lineWidth = 3, titleSize = 5)
+
+```
+
