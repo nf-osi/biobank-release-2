@@ -23,6 +23,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Install all packages required for the analysis
 ```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
 
 #library(synapser)
@@ -108,9 +109,9 @@ DT::datatable(jhu_triplicates_clinicaldata[, c("individualID", "tumorType")] %>%
 
 ```{r get-data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
 
-#source("/Users/jineta/git/gitrepo/biobank-release-2/data/get-data-somatic-snv.Rmd")
+#source("./data/get-data-somatic-snv.Rmd")
 
-files <- (Sys.glob("/Users/jineta/git/gitrepo/biobank-release-2/data/raw_data/somatic_snv_batch1_2_3/*.maf"))
+files <- (Sys.glob("./data/raw_data/somatic_snv_batch1_2_3/*.maf"))
 
 listOfFiles <- lapply(files, function(x) maftools::read.maf(maf = x,
                                                             clinicalData = jhu_triplicates_clinicaldata)) 
@@ -152,6 +153,7 @@ color_list <- c(coolors1, coolors2, coolors3)
 
 ```{r gene-list, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
 
+
 # Make genelist
 gene_list <- c("NF1","NF2", 
                "TP53", "CDKN2A", "EED", "SUZ12",
@@ -167,17 +169,18 @@ gene_list <- c("NF1","NF2",
 
 &nbsp;
 
+
 ### Visualizing single nucleotide variants in all batches
 
 Somatic calls from Mutect2 were visualized in the all the samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
 
 Below is a summary of all unfiltered variants identified in the samples :
 
-![Figure 1](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_summary.png "figure 1")
+![Figure 1](./experiments/figures/Somatic_all_samples_unfiltered_summary.png "figure 1")
 
 ```{r oncoplot-all, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_summary.pdf", height = 20, width = 20)
+# pdf("./experiments/figures/Somatic_all_samples_unfiltered_summary.pdf", height = 20, width = 20)
 # plotmafSummary(maf = somatic_snv, 
 #                rmOutlier = TRUE, 
 #                addStat = 'median', 
@@ -189,7 +192,7 @@ Below is a summary of all unfiltered variants identified in the samples :
 
 ```{r oncoplot-goi, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_GOI.pdf", height = 40, width = 40)
+# pdf("./experiments/figures/Somatic_all_samples_unfiltered_GOI.pdf", height = 40, width = 40)
 # oncoplot(somatic_snv, genes = gene_list, 
 #          altered = TRUE,
 #          drawRowBar = FALSE, showTumorSampleBarcodes = TRUE,
@@ -203,7 +206,7 @@ Below is a summary of all unfiltered variants identified in the samples :
 
 ```
 
-![Figure 2](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_GOI.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
+![Figure 2](./experiments/figures/Somatic_all_samples_unfiltered_GOI.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
 
 &nbsp;
 
@@ -234,13 +237,13 @@ pnf_maf@data$Tumor_Sample_Barcode[match(pnf_maf@clinical.data$Tumor_Sample_Barco
 
 ```
 
-![Figure 3](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumor samples.") 
-![Figure 4](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest.")
+![Figure 3](./experiments/figures/Somatic_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumor samples.") 
+![Figure 4](./experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest.")
 
 ```{r co-oncoplot, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
 maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
+# pdf("./experiments/figures/Somatic_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
 # oncoplot(maf_file, top = 100,
 #           altered = TRUE,
 #           drawRowBar = FALSE, showTumorSampleBarcodes = TRUE, sortByAnnotation = TRUE,
@@ -252,7 +255,7 @@ maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
 #   #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
 # dev.off()
 
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.pdf", height = 40, width = 40)
+# pdf("./experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.pdf", height = 40, width = 40)
 # maftools::coOncoplot(m1 = pnf_maf,
 #                      m2 = mpnst_maf,
 #                      m1Name = "Plexiform Neurofibroma",
@@ -278,6 +281,7 @@ maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
 ```
 
 &nbsp;
+
 
 ### Filtered variants in Triad Samples:
 
@@ -311,13 +315,13 @@ pnf_maf@data$Tumor_Sample_Barcode[match(pnf_maf@clinical.data$Tumor_Sample_Barco
 
 ```
 
-![Figure 5](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumors in triads. samples.") 
-![Figure 6](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.png "shows filtered variants in our list of genes of interest in the triads.")
+![Figure 5](./experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumors in triads. samples.") 
+![Figure 6](./experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.png "shows filtered variants in our list of genes of interest in the triads.")
 
 ```{r co-oncoplot-triad, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
 maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
+# pdf("./experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
 # oncoplot(maf_file, top = 100,
 #          altered = TRUE,
 #          drawRowBar = FALSE, showTumorSampleBarcodes = TRUE, sortByAnnotation = TRUE,
@@ -329,7 +333,7 @@ maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
 #   #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
 # dev.off()
 # 
-# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.pdf", height = 40, width = 40)
+# pdf("./experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.pdf", height = 40, width = 40)
 # maftools::coOncoplot(m1 = pnf_maf,
 #                      m2 = mpnst_maf,
 #                      m1Name = "Plexiform Neurofibroma",
@@ -356,4 +360,3 @@ maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
 #                       showTumorSampleBarcodes = TRUE)
 
 ```
-

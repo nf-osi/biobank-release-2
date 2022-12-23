@@ -36,6 +36,7 @@ library(reticulate)
 import synapseclient
 syn = synapseclient.Synapse()
 
+
 syn.login(email= "jineta.banerjee",
                    apiKey= "")
 
