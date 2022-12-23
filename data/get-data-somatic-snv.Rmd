@@ -38,7 +38,7 @@ import synapseclient
 syn = synapseclient.Synapse()
 
 syn.login(email= "jineta.banerjee",
-                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+                   apiKey= "")
 
 ```
 
@@ -82,11 +82,14 @@ jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$s
 
 jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-009 Neurofibroma"] <- "2_009_Neurofibroma_TD"
 
+jhu_triplicates_clinicaldata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(!stringr::str_detect(specimenID, 'Cell_Line|Xenograft|xenograft')) 
+
 ```
 
 ```{r read_maf}
 
-files <- (Sys.glob("/Users/jineta/git/gitrepo/biobank-release-2/data/somatic_snv_batch1_2_3/*.maf"))
+files <- (Sys.glob("/Users/jineta/git/gitrepo/biobank-release-2/data/raw_data/somatic_snv_batch1_2_3/*.maf"))
 
 listOfFiles <- lapply(files, function(x) maftools::read.maf(maf = x,
                                                             clinicalData = jhu_triplicates_clinicaldata)) 
