@@ -48,7 +48,8 @@ library(ggrepel)
 import synapseclient
 syn = synapseclient.Synapse()
 
-syn.login()
+syn.login(email= "jineta.banerjee",
+                   apiKey= "")
 
 ```
 

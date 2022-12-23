@@ -36,7 +36,9 @@ library(reticulate)
 import synapseclient
 syn = synapseclient.Synapse()
 
-syn.login()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "")
 
 ```
 
@@ -44,8 +46,8 @@ syn.login()
 
 ```{python mergedmaf, eval = FALSE}
 
-syn.get("syn30845251", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch1-batch2") #batch1plus2
-syn.get("syn37187736", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch3") #batch3
+#syn.get("syn30845251", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch1-batch2") #batch1plus2
+#syn.get("syn37187736", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/rnaseq-batch3") #batch3
 
 ```
 
@@ -58,7 +60,7 @@ import pandas as pd
 #get clinical annotations
 query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'rnaSeq' ) "
 
-jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
-jhu_triplicates_clinicaldata.columns
+jhu_clinicaldata = syn.tableQuery(query).asDataFrame()
+jhu_clinicaldata.columns
 
 ```
