@@ -68,7 +68,7 @@ In this study we analyzed germline and somatic variant calls of JHU Biobank samp
 
 ## Germline Variant Calling
 
-Raw fastq data files were quality checked using FastQC v0.11.9 and a report was generated using MultiQC	v1.8. Fastq files were aligned to GRCh38 using BWA	0.7.17. Duplicates were marked using GATK MarkDuplicates, and bases recalibrated using GATK BaseRecalibrator and GATK ApplyBQSR	(GATK v4.1.7.0). Germline and de-novo variants were then called using Google's DeepVariant software (deepvariant v1.1.0). The variants were annotated using Variant Effect Predictor (VEP	v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v2.7.1](https://nf-co.re/sarek/2.7.1).
+Raw fastq data files were quality checked using FastQC v0.11.9 and a report was generated using MultiQC	v1.8. Fastq files were aligned to GRCh38 using BWA	0.7.17. Duplicates were marked using GATK MarkDuplicates, and bases recalibrated using GATK BaseRecalibrator and GATK ApplyBQSR	(GATK v4.1.7.0). Germline and de-novo variants were then called using Google's DeepVariant software (deepvariant v1.1.0). DeepVariant calls variants in two steps. In the first step (`make_examples`) a human-written heuristic identifies positions that are potentially variants and creates pileup examples of them. In the second step (`call_variants`), a neural network classifies whether the identified positions are real variants or not and genotypes them. The identified variants were annotated using Variant Effect Predictor (VEP	v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v2.7.1](https://nf-co.re/sarek/2.7.1).
 
 ## Somatic Variant Calling
 
@@ -147,6 +147,9 @@ DT::datatable(jhu_triplicates_clinicaldata[, c("individualID", "tumorType", "Seq
 
 Variant calls for germline and de-novo mutations using DeepVariant were visualized in PNF and MPNST samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
 
+#### Note:
+All variants regardless of whether the variant caller denoted them as high confidence calls or low confidence calls have been included in `unfiltered_variants`. It should be noted that these include potential false positives. This was done to explore the full breadth of all called variants before additional filters are imposed.
+
 Figure 1 is a summary overview of all unfiltered variants identified in the samples. 
 
 ![Figure 1](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_unfiltered_summary.png "figure 1")
@@ -163,9 +166,19 @@ Figure 2 below shows oncoplots of all unfiltered variants identified in our list
 
 The germline and de-novo variant calls were then filtered to exclude common variants and variants with potentially low or medium deleterious consequences. 
 
+#### Filter criteria
+
+* All variants that had values of "RefCall", "common_variant", or "RefCall;common_variant" in the `FILTER` column were excluded. This excludes any variants that are deemed common_variant due to gnomAD_AF >= 0.0005 or are low confidence variant calls. A RefCall entry occurs only in Deepvariant output files when a candidate variant is proposed and then is specifically rejected as non-variant. 
+
+* Additionally all variants that had values of "MODERATE" or "MODIFIER" in the `IMPACT` column were excluded. 
+
+* Only variants that had "PASS" in `FILTER` column and "HIGH" in `IMPACT` column were included in the analyses below.
+
+&nbsp;
+
 Figure 3 below shows filtered variants in our list of genes of interest in PNF and MPNST samples.
 
-![Figure 3](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest.")
+![Figure 3](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_passfiltered_GOI_NEW.png "shows filtered variants in our list of genes of interest.")
 
 &nbsp;
 
@@ -176,17 +189,15 @@ Now we specifically choose the patients who provided samples for normal, benign,
 
 We have 5 PNF samples and 11 MPNST samples from TRIAD patients. One thing to note is that there are more number of MPNST samples than PNF samples. This is mainly because 1) Some patients with MPNST had multiple samples sequenced, and all of them are represented in the plots, 2) Some patients with MPNST had a benign form of NF1 tumor other than PNF (e.g. cNF or ANF). 
 
-In the plots below we note that germline data from only 4 PNF samples are represented. We are currently investigating the missing sample.
-
 Figure 4 below shows filtered germline and de-novo variants in top 100 genes in the triad samples.
 
-![Figure 4](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 100 mutated genes in PNF and MPNST tumors in triads. samples.") 
+![Figure 4](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_top_NEW.png "shows the filtered variants in top 100 mutated genes in PNF and MPNST tumors in triads. samples.") 
 
 &nbsp;
 
 Figure 5 below shows filtered variants in the triads in our list of genes of interest.
 
-![Figure 5](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest in the triads.")
+![Figure 5](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_GOI_NEW.png "shows filtered variants in our list of genes of interest in the triads.")
 
 &nbsp;
 
@@ -197,6 +208,9 @@ Figure 5 below shows filtered variants in the triads in our list of genes of int
 ### Summary of unfiltered variants
 
 Somatic calls from Mutect2 were visualized in the PNF and MPNST samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
+
+#### Note:
+All variants regardless of whether the variant caller denoted them as high confidence calls or low confidence calls have been included in `unfiltered_variants`. It should be noted that these include potential false positives.
 
 Figure 6 is a summary overview of all unfiltered variants identified in the samples :
 
@@ -212,7 +226,15 @@ Figure 7 shows an oncoplot of all unfiltered variants identified in our list of 
 
 ### Filtered variants in PNF and MPNST samples:
 
-The somatic variant calls were then filtered to exclude common variants and variants with potentially low or medium impact consequences. 
+The somatic variant calls were then filtered to exclude common variants and variants with potentially low or medium impact consequences.
+
+#### Filter criteria
+
+* All variants that had values of "common_variant" in the `FILTER` column were excluded. This excludes any variants that are deemed common_variant due to gnomAD_AF >= 0.0005 or are low confidence variant calls. 
+
+* Additionally all variants that had values of "MODERATE" or "MODIFIER" in the `IMPACT` column were excluded. 
+
+* Only variants that had "." in `FILTER` column and "HIGH" in `IMPACT` column were included in the analyses below.
 
 &nbsp;
 
