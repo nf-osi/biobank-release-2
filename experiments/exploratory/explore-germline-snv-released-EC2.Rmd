@@ -271,7 +271,11 @@ mpnst_maf@data$Tumor_Sample_Barcode[match(mpnst_maf@clinical.data$Tumor_Sample_B
 pnf_maf <- maftools::subsetMaf(maf = somatic_snv, 
                                  tsb = pnf_tsb)
 #PASS filter
-pnf_maf@data <- pnf_maf@data %>% dplyr::filter(pnf_maf@data$FILTER != "common_variant" & pnf_maf@data$IMPACT == "HIGH")
+#PASS filter
+pnf_maf@data <- pnf_maf@data %>% dplyr::filter(pnf_maf@data$FILTER != "common_variant" & 
+                                                     pnf_maf@data$FILTER != "RefCall" & 
+                                                     pnf_maf@data$FILTER != "RefCall;common_variant" & 
+                                                     pnf_maf@data$IMPACT == "HIGH")
 pnf_maf@data$Tumor_Sample_Barcode[match(pnf_maf@clinical.data$Tumor_Sample_Barcode, pnf_maf@data$Tumor_Sample_Barcode)] <- pnf_maf@clinical.data$individualID
 
 ```
