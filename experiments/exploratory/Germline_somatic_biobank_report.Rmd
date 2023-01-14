@@ -220,7 +220,7 @@ Figure 6 is a summary overview of all unfiltered variants identified in the samp
 
 Figure 7 shows an oncoplot of all unfiltered variants identified in our list of genes of interest in the pNF and MPNST samples.
 
-![Figure 7](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_GOI.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
+![Figure 7](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_GOI_NEW.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
 
 &nbsp;
 
