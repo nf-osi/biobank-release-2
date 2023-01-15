@@ -1,0 +1,287 @@
+---
+title: "Germline and somatic variant analysis in JHU Biobank samples"
+author:
+- affiliation: Sage Bionetworks
+  affiliation_url: https://sagebionetworks.org/
+  name: Jineta Banerjee
+  url: null
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    fig_width: 10
+    fig_height: 10
+    fig_caption: true
+    df_print: paged 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+library(DT)
+
+library(reticulate)
+
+```
+
+```{python login_to_synapse, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "iaIrESLwnfZef3H3+khpPhAtRrSgipl1YbFX9jAQ0YlL38ygCIZ2/ocleaivnCXX0Dzre81ahVPUjO79fLJgNg==")
+
+```
+
+# Summary
+
+In this study we analyzed germline and somatic variant calls of JHU Biobank samples to explore the genomic landscape of benign and malignant tumors in people with Neurofibromatosis type 1 (NF1). While the analysis is still being refined, we identified a list of top 100 genes that were found to carry high impact variants in PNF and MPNST samples. We also explored variants in many genes of interest which represent important cellular pathways that have been implicated to be dysfunctional in plexiform neurofibromas (PNFs) and malignant peripheral nerve sheath tumors (MPNSTs). Additionally we explored the variants in Triad samples (i.e. patients with both benign and malignant samples) and identified a list of top 100 genes with high impact somatic variants in PNF and MPNST samples.
+
+&nbsp;
+
+
+# Methods
+
+## Genomic Variant Calling
+
+Raw fastq data files were quality checked using FastQC v0.11.9 and a report was generated using MultiQC	v1.8. Fastq files were aligned to GRCh38 using BWA	0.7.17. Duplicates were marked using GATK MarkDuplicates, and bases recalibrated using GATK BaseRecalibrator and GATK ApplyBQSR	(GATK v4.1.7.0). Genomic variants (a mix of germline, somatic, and de-novo variants) were then called using Google's DeepVariant software (deepvariant v1.1.0). DeepVariant calls variants in two steps. In the first step (`make_examples`) a human-written heuristic identifies positions that are potentially variants and creates pileup examples of them. In the second step (`call_variants`), a neural network classifies whether the identified positions are real variants or not and genotypes them. The identified variants were annotated using Variant Effect Predictor (VEP	v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v2.7.1](https://nf-co.re/sarek/2.7.1).
+
+## Somatic Variant Calling
+
+After the initial alignment and base recalibration, somatic variants were called using GATK Mutect2 software (GATK v4.1.7.0). The variants were annotated using Variant Effect Predictor (VEP	v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v2.7.1](https://nf-co.re/sarek/2.7.1).
+
+&nbsp;
+
+# Results
+
+## Sample Summary
+
+The samples analyzed here include samples sequenced in batch 1, batch 2, and batch 3 of JHU Biobank. Batch 1 was fully sequenced in JHU sequencing core. Batch 2 and Batch 3 samples were sequenced in WUSTL.
+
+&nbsp;
+
+```{python clinical_data_from_tables, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+import pandas as pd
+
+#get clinical annotations
+query = "SELECT distinct individualID, specimenID, tumorType, parentId FROM syn30791643 where assay = 'Whole Exome Sequencing' and fileFormat = 'fastq' or fileFormat = 'cram' "
+
+jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
+
+```
+
+```{r clindata, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+#convert specimenID column to Tumor_Sample_Barcode
+py$jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- py$jhu_triplicates_clinicaldata$specimenID
+
+jhu_triplicates_clinicaldata <- py$jhu_triplicates_clinicaldata %>% as.data.frame()
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- stringr::str_replace_all(jhu_triplicates_clinicaldata$Tumor_Sample_Barcode," ","_")
+
+# clean up names
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-015 Malignant Peripheral Nerve Sheath Tumor"] <- "2_015_Malignant_Peripheral_Nerve_Sheath_Tumor_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-016 Malignant Peripheral Nerve Sheath Tumor"] <- "2_016_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-009 Neurofibroma"] <- "2_009_Neurofibroma_TD"
+
+#select only tumor samples
+jhu_triplicates_clinicaldata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(!stringr::str_detect(specimenID, 'Cell_Line|Cell Line|Xenograft|xenograft')) 
+
+#add batch info
+jhu_triplicates_clinicaldata$SequencingBatch[jhu_triplicates_clinicaldata$parentId == "syn19226800" | jhu_triplicates_clinicaldata$parentId == "syn18083424"] <- "1"
+jhu_triplicates_clinicaldata$SequencingBatch[jhu_triplicates_clinicaldata$parentId == "syn23529670"] <- "2"
+jhu_triplicates_clinicaldata$SequencingBatch[jhu_triplicates_clinicaldata$parentId == "syn26532749"] <- "3"
+
+jhu_triplicates_clinicaldata$tumorType[jhu_triplicates_clinicaldata$tumorType == "Not Applicable"] <- "Normal"
+
+jhu_triplicates_clinicaldata$tumorType <- unlist(jhu_triplicates_clinicaldata$tumorType)
+jhu_triplicates_clinicaldata$individualID <- unlist(jhu_triplicates_clinicaldata$individualID)
+jhu_triplicates_clinicaldata$specimenID <- unlist(jhu_triplicates_clinicaldata$specimenID)
+
+jhu_triplicates_clinicaldata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(!is.nan(tumorType))
+
+jhu_triplicates_clinicaldata$tumorType[jhu_triplicates_clinicaldata$tumorType == "NaN"] <- "Normal"
+
+```
+
+```{r clindata-2, eval=TRUE, echo=FALSE}
+
+a <- jhu_triplicates_clinicaldata[, c("individualID", "tumorType", "SequencingBatch")] %>% unique() %>% arrange(individualID) %>% dplyr::filter(!is.nan(tumorType))
+  
+DT::datatable(a)
+
+#write_csv(a, file = "/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/sampleInfo.csv")
+
+```
+
+&nbsp;
+
+## All variants (germline, somatic, and de novo variants):
+
+### Summary of unfiltered variants
+
+Variant calls for germline, somatic, and de-novo mutations using DeepVariant were visualized in PNF and MPNST samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
+
+#### Note:
+All variants regardless of whether the variant caller denoted them as high confidence calls or low confidence calls have been included in `unfiltered_variants`. It should be noted that these include potential false positives. This was done to explore the full breadth of all called variants before additional filters are imposed.
+
+Figure 1 is a summary overview of all unfiltered variants identified in the samples. 
+
+![Figure 1](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_unfiltered_summary.png "figure 1")
+
+&nbsp;
+
+Figure 2 below shows oncoplots of all unfiltered variants identified in our list of genes of interest.
+
+![Figure 2](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_samples_unfiltered_GOI.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
+
+&nbsp;
+
+### Filtered variants in PNF and MPNST samples:
+
+The germline, somatic, and de-novo variant calls were then filtered to exclude common variants and variants with potentially low or medium deleterious consequences. 
+
+#### Filter criteria
+
+* All variants that had values of "RefCall", "common_variant", or "RefCall;common_variant" in the `FILTER` column were excluded. This excludes any variants that are deemed common_variant due to gnomAD_AF >= 0.0005 or are low confidence variant calls. A RefCall entry occurs only in Deepvariant output files when a candidate variant is proposed and then is specifically rejected as non-variant. 
+
+* Additionally all variants that had values of "MODERATE" or "MODIFIER" in the `IMPACT` column were excluded. 
+
+* Only variants that had "PASS" in `FILTER` column and "HIGH" in `IMPACT` column were included in the analyses below.
+
+&nbsp;
+
+Figure 3 below shows filtered variants in our list of genes of interest in PNF and MPNST samples. Based on the filters above, the plot below shows a mix of somatic and de-novo variants called by DeepVariant. 
+
+![Figure 3](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_pnf_mpnst_passfiltered_GOI_NEW.png "shows filtered variants in our list of genes of interest.")
+
+&nbsp;
+
+### Filtered variants in Triad Samples:
+
+Now we specifically choose the patients who provided samples for normal, benign, and malignant tissue. These set of samples are called "TRIADS". The patients with triad samples are:
+"JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-031", "JH-2-045", "JH-2-055", "JH-2-084".
+
+We have 5 PNF samples and 11 MPNST samples from TRIAD patients. One thing to note is that there are more number of MPNST samples than PNF samples. This is mainly because 1) Some patients with MPNST had multiple samples sequenced, and all of them are represented in the plots, 2) Some patients with MPNST had a benign form of NF1 tumor other than PNF (e.g. cNF or ANF). 
+
+Figure 4 below shows filtered somatic and de-novo variants in top 100 genes in the triad samples.
+
+![Figure 4](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_top_NEW.png "shows the filtered variants in top 100 mutated genes in PNF and MPNST tumors in triads. samples.") 
+
+&nbsp;
+
+Figure 5 below shows filtered variants in the triads in our list of genes of interest.
+
+![Figure 5](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Germline_triad_pnf_mpnst_passfiltered_GOI_NEW.png "shows filtered variants in our list of genes of interest in the triads.")
+
+&nbsp;
+
+&nbsp;
+
+## Somatic Variants
+
+### Summary of unfiltered variants
+
+Since we had access to tumor-normal paired samples, we also used a somatic variant caller called Mutect2 to detct somatic variants in the tumor samples. Somatic calls from Mutect2 were visualized in the PNF and MPNST samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
+
+#### Note:
+All variants regardless of whether the variant caller denoted them as high confidence calls or low confidence calls have been included in `unfiltered_variants`. It should be noted that these include potential false positives.
+
+Figure 6 is a summary overview of all unfiltered variants identified in the samples :
+
+![Figure 6](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_summary.png "figure 1")
+
+&nbsp;
+
+Figure 7 shows an oncoplot of all unfiltered variants identified in our list of genes of interest in the pNF and MPNST samples.
+
+![Figure 7](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_GOI_NEW.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
+
+&nbsp;
+
+### Filtered variants in PNF and MPNST samples:
+
+The somatic variant calls were then filtered to exclude common variants and variants with potentially low or medium impact consequences.
+
+#### Filter criteria
+
+* All variants that had values of "common_variant" in the `FILTER` column were excluded. This excludes any variants that are deemed common_variant due to gnomAD_AF >= 0.0005 or are low confidence variant calls. 
+
+* Additionally all variants that had values of "MODERATE" or "MODIFIER" in the `IMPACT` column were excluded. 
+
+* Only variants that had "." in `FILTER` column and "HIGH" in `IMPACT` column were included in the analyses below.
+
+&nbsp;
+
+Figure 8 shows the top genes with somatic variants in PNF and MPNST samples after filtering out any common variants or variants that have low or medium impact. 
+
+![Figure 8](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumor samples.") 
+
+&nbsp;
+
+Figure 9 shows filtered somatic variants in PNF and MPNST samples in our list of genes of interest. These results show the following:
+
+* Not all PNF or MPNST samples show the presence of single nucleotide variants in the NF1 gene. There may be two reasons for this : a) Samples may contain microdeletions or copy number variations in NF1 gene which would not be detected in this analysis, b) Samples may have lower tumor purity resulting in low detection range for NF1 variants.
+
+* 30% of the MPNST samples show variants in SUZ12 gene, a known gene affected in MPNST samples.
+
+&nbsp;
+
+![Figure 9](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest.")
+
+&nbsp;
+
+### Filtered somatic variants in Triad Samples:
+
+Now we specifically choose the patients who provided samples for normal, benign, and malignant tissue. These set of samples are called "TRIADS". The patients with triad samples are:
+"JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-031", "JH-2-045", "JH-2-055", "JH-2-084".
+
+&nbsp;
+
+Figure 10 shows top 100 genes with filtered somatic variants in PNF and MPNST samples. We note that NF1 is among the top 100 genes with impactful somatic variants.
+
+&nbsp;
+
+![Figure 10](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumors in triads. samples.") 
+
+&nbsp;
+
+Figure 11 shows filtered variants in our list of genes of interest in the triad samples.
+
+Like before we note that many of the samples do not show any variants in NF1 gene. The Biobank is currently looking at tumor purity information for these samples to rule out any purity related issues.
+
+&nbsp;
+
+![Figure 11](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.png "shows filtered variants in our list of genes of interest in the triads.")
+
+-----
+

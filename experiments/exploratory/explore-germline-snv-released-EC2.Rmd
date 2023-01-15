@@ -1,0 +1,404 @@
+---
+title: "Germline SNVs in JHU Biobank Batch 1,2, and 3"
+author:
+- affiliation: Sage Bionetworks
+  affiliation_url: https://sagebionetworks.org/
+  name: Jineta Banerjee
+  url: null
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    fig_width: 10
+    fig_height: 10
+    fig_caption: true
+    df_print: paged 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+#library(magicfor)  ## store data from forloop as dataframe
+#library(magrittr)
+#library(shiny)
+library(glue)
+library(DT)
+
+library(reticulate)
+reticulate::use_python("/usr/local/bin/python")
+
+```
+
+
+```{python login_to_synapse, engine.path="/usr/local/bin/python", eval=TRUE, echo=FALSE, results='hide'}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login()
+
+```
+
+### Summary
+
+&nbsp;
+
+### Germline Variant Calling
+
+Raw fastq data files were quality checked using FastQC v0.11.9 and a report was generated using MultiQC      v1.8. Fastq files were aligned to GRCh38 using BWA   0.7.17. Duplicates were marked using GATK MarkDuplicates, and bases recalibrated using GATK BaseRecalibrator and GATK ApplyBQSR      (GATK v4.1.7.0). Germline variants were then called using Google's DeepVariant software (deepvariant v1.1.0). The variants were annotated using Variant Effect Predictor (VEP  v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v2.7.1](https://nf-co.re/sarek/2.7.1).
+
+### Sample Summary
+
+```{python clinical_data_from_tables, engine.path="/usr/local/bin/python", echo=FALSE, eval=TRUE, results='hide'}
+
+import pandas as pd
+
+#get clinical annotations
+query = "SELECT distinct individualID, specimenID, tumorType, tissue, sex, age, bodyPart, isCellLine FROM syn30791643 WHERE ( assay = 'Whole Exome Sequencing') "
+
+jhu_triplicates_clinicaldata = syn.tableQuery(query).asDataFrame()
+jhu_triplicates_clinicaldata.columns
+
+
+```
+
+```{r clindata, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+#convert specimenID column to Tumor_Sample_Barcode
+py$jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- py$jhu_triplicates_clinicaldata$specimenID
+
+jhu_triplicates_clinicaldata <- py$jhu_triplicates_clinicaldata
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode <- stringr::str_replace_all(jhu_triplicates_clinicaldata$Tumor_Sample_Barcode," ","_")
+
+# clean up names
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-015 Malignant Peripheral Nerve Sheath Tumor"] <- "2_015_Malignant_Peripheral_Nerve_Sheath_Tumor_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-016 Malignant Peripheral Nerve Sheath Tumor"] <- "2_016_TD"
+
+jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$specimenID == "2-009 Neurofibroma"] <- "2_009_Neurofibroma_TD"
+
+#select only tumor samples
+jhu_triplicates_clinicaldata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(!stringr::str_detect(specimenID, 'Cell_Line|Cell Line|Xenograft|xenograft')) 
+
+mpnst_clindata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(tumorType == "Malignant Peripheral Nerve Sheath Tumor")
+#add filepath
+mpnst_clindata$path <- paste0("/home/rstudio/data/biobank-release-2/data/germline_mafs/", mpnst_clindata$Tumor_Sample_Barcode, ".maf")
+
+pnf_clindata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(tumorType == "Plexiform Neurofibroma")
+#add filepath
+pnf_clindata$path <- paste0("/home/rstudio/data/biobank-release-2/data/germline_mafs/", pnf_clindata$Tumor_Sample_Barcode, ".maf")
+
+normal_clindata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(tumorType == "Not Applicable")
+
+cnf_clindata <- jhu_triplicates_clinicaldata %>% 
+  dplyr::filter(tumorType == "Cutaneous Neurofibroma" |
+                  tumorType == "Diffuse Infiltrating Neurofibroma" |
+                  tumorType == "Neurofibroma with Degenerative Atypia" |
+                  tumorType == "Localized Neurofibroma" )
+```
+
+```{r samples, eval=FALSE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+DT::datatable(jhu_triplicates_clinicaldata[, c("individualID", "tumorType")] %>% unique() %>% arrange(individualID) %>% drop_na())
+
+```
+
+```{r get-data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+#source("/Users/jineta/git/gitrepo/biobank-release-2/data/get-data-somatic-snv.Rmd")
+
+files <- (Sys.glob("/home/rstudio/data/biobank-release-2/data/germline_mafs/*.maf"))
+
+mpnst_clindata <- mpnst_clindata %>% 
+  dplyr::filter(mpnst_clindata$path %in% files)
+listOfFiles_mpnst <- lapply(mpnst_clindata$path, function(x) maftools::read.maf(maf = x,
+                                                            clinicalData = mpnst_clindata))
+
+pnf_clindata <- pnf_clindata %>% 
+  dplyr::filter(pnf_clindata$path %in% files)
+listOfFiles_pnf <- lapply(pnf_clindata$path, function(x) maftools::read.maf(maf = x,
+                                                            clinicalData = pnf_clindata))
+
+normal_clindata <- normal_clindata %>% 
+  dplyr::filter(normal_clindata$path %in% files)
+listOfFiles_normal <- lapply(files, function(x) maftools::read.maf(maf = x,
+                                                            clinicalData = normal_clindata))
+
+cnf_clindata <- cnf_clindata %>% 
+  dplyr::filter(cnf_clindata$path %in% files)
+listOfFiles_cnf <- lapply(files, function(x) maftools::read.maf(maf = x,
+                                                            clinicalData = cnf_clindata))
+
+mpnst_snv <- maftools::merge_mafs(listOfFiles_mpnst)
+pnf_snv <- maftools::merge_mafs(listOfFiles_pnf)
+normal_snv <- maftools::merge_mafs(listOfFiles_normal)
+cnf_snv <- maftools::merge_mafs(listOfFiles_cnf)
+
+```
+
+```{r colors, echo=FALSE, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+#Changing colors for variant classifications 
+coolors1 = c("#ca054d", "#3b1c32", "#a4d4b4", "#ffcf9c", "#007EA7", "#EAF27C", "#F2AA7E", "#9984D4", "#C5979D")
+names(coolors1) = c('Frame_Shift_Del',
+                       'Frame_Shift_Ins',
+                       'Nonsense_Mutation', 
+                       'Multi_Hit', 
+                       'Missense_Mutation',
+                       'In_Frame_Ins', 
+                       'Splice_Site', 
+                       'In_Frame_Del')
+coolors1 <- list(coolors1)
+                       
+coolors2 = c("#F7F7FF", "#C49991", "#279AF1", "#60656F", "#131112", "#1F2041", "#4B3F72", "#69306D", "#0E103D",
+              "#D1CA98", "#EDBF85", "#F7F06D", "#FFB140", "#C6D4FF", "#7A82AB", "#942911", "#012A36", "#7E52A0", 
+              "#F1DEDE", "#904E55", "#8CFF98", "#AAD922", "#E71D36", "#A1674A", "#8EE3F5", "#70CAD1", "#3E517A", 
+              "#D33F49", "#002642", "#F9DC5C", "#3185FC", "#87A0B2", "#5BC0BE", "#7371FC", "#D9C5B2", "#F1D302", "#FE7F2D")
+sampleID <- as.factor(jhu_triplicates_clinicaldata$individualID)
+names(coolors2) = levels(sampleID)
+coolors2 <- list(coolors2)
+
+
+coolors3 <- c("#0D3B66", "#F4D35E", "#EE964B", "#61C9A8", "#BA3B46", "#f05365")
+tumortypes <- as.factor(py$jhu_triplicates_clinicaldata$tumorType)
+names(coolors3) <- levels(tumortypes)
+coolors3 <- list(coolors3)
+
+color_list <- c(coolors1, coolors2, coolors3)
+
+```
+
+```{r gene-list, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+# Make genelist
+gene_list <- c("NF1","NF2", 
+               "TP53", "CDKN2A", "EED", "SUZ12",
+               "EZH2", "CHD4", "EPC1", "ASTE1", "DAXX", "ATRX", "PCLO", "SPRED1",
+               "MTAP", "PREX2", "NCOA2", "BCL2L1", "TYK2", "BRAF", "ERBB1", "LRP1B", "MSH3", "USP9X",
+               "TSC2", "PBRM1", "FLCN", "CSF3R", "CSF1R", "CNKSR1", "ATR", "SETDB1", "RNF43", "RAD21","PTPN11",
+               "PRDM1", "PML", "MSI2", "PIK3CA", "KIT", "PDGFRA", "FGFR1", "RASSF9", "TGFB1",
+               "GNAS", "EPHB6", "CNBP", "BRCA2", "ATM", "AMER1", "BRAF1", "PMS2", "B2M", 
+               #"HLA-A", "HLA-B", "HLA-C", "HLA-E", "HLA-F", "HLA-G", "HLA-H", 
+               "TAP2", "STK11", "BLM", "DNM2", "ETV6", "IGF1R", "KMT2B", "NLRP1", "TRAF3", "CCN6")
+
+```
+
+&nbsp;
+
+### Visualizing single nucleotide variants in PNFs and MPNSTs from all batches
+
+Germline calls from Deepvariant were visualized in the all the samples without any prefilter steps. The samples include tumor samples from 3 different sequencing batches.
+
+Below is a summary of all unfiltered variants identified in the samples :
+
+```{r oncoplot-all, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#![Figure 1](./experiments/figures/Germline_all_samples_unfiltered_summary.png "figure 1")
+
+# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_all_samples_unfiltered_summary.pdf", height = 20, width = 20)
+# plotmafSummary(maf = somatic_snv, 
+#                rmOutlier = TRUE, 
+#                addStat = 'median', 
+#                dashboard = TRUE, 
+#                titvRaw = FALSE,
+#                fs = 5)
+# dev.off()
+```
+
+```{r oncoplot-goi, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+pdf("./experiments/figures/Germline_pnf_mpnst_samples_unfiltered_GOI.pdf", height = 40, width = 40)
+oncoplot(somatic_snv, genes = gene_list,
+         altered = TRUE,
+         drawRowBar = FALSE, showTumorSampleBarcodes = TRUE,
+         clinicalFeatures = c("individualID", "specimenID"),
+         annotationFontSize = 5, fontSize = 5,legendFontSize = 5, anno_height = 1,
+         keepGeneOrder= FALSE, cBioPortal = TRUE,
+         sepwd_genes = 3.5, sepwd_samples = 3.5, #titleText = sampleID,
+         titleFontSize = 1.5, bgCol = "white", borderCol = "white", fill = TRUE)
+  #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
+dev.off()
+
+```
+
+![Figure 2](./experiments/figures/Germline_pnf_mpnst_samples_unfiltered_GOI.png "shows an oncoplot of all unfiltered variants identified in our list of genes of interest.") 
+
+&nbsp;
+
+### Filtered variants in PNF and MPNST samples:
+
+The somatic variant calls were then filtered to exclude common variants and variants with potentially low or medium deleterious consequence. The first oncoplot shows top 500 genes with mutations in PNF and MPNST samples. The second oncoplot shows mutations for genes of interest in PNF and MPNST samples.
+
+```{r subset-maf, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+mpnst_tsb <- jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$tumorType == "Malignant Peripheral Nerve Sheath Tumor"]
+
+pnf_tsb <- jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[jhu_triplicates_clinicaldata$tumorType == "Plexiform Neurofibroma"]
+
+mpnst_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = mpnst_tsb)
+#PASS filter
+mpnst_maf@data <- mpnst_maf@data %>% dplyr::filter(mpnst_maf@data$FILTER != "common_variant" & mpnst_maf@data$IMPACT == "HIGH")
+
+#replace TSB with individualID
+#as1$Values[match(as2$ID, as1$ID)] <- as2$Values
+mpnst_maf@data$Tumor_Sample_Barcode[match(mpnst_maf@clinical.data$Tumor_Sample_Barcode, mpnst_maf@data$Tumor_Sample_Barcode)] <- mpnst_maf@clinical.data$individualID
+
+pnf_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = pnf_tsb)
+#PASS filter
+#PASS filter
+pnf_maf@data <- pnf_maf@data %>% dplyr::filter(pnf_maf@data$FILTER != "common_variant" & 
+                                                     pnf_maf@data$FILTER != "RefCall" & 
+                                                     pnf_maf@data$FILTER != "RefCall;common_variant" & 
+                                                     pnf_maf@data$IMPACT == "HIGH")
+pnf_maf@data$Tumor_Sample_Barcode[match(pnf_maf@clinical.data$Tumor_Sample_Barcode, pnf_maf@data$Tumor_Sample_Barcode)] <- pnf_maf@clinical.data$individualID
+
+```
+
+![Figure 3](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumor samples.") 
+![Figure 4](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.png "shows filtered variants in our list of genes of interest.")
+
+```{r co-oncoplot, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
+# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
+# oncoplot(maf_file, top = 100,
+#           altered = TRUE,
+#           drawRowBar = FALSE, showTumorSampleBarcodes = TRUE, sortByAnnotation = TRUE,
+#           clinicalFeatures = c("tumorType","individualID"),
+#           annotationFontSize = 5, fontSize = 5,legendFontSize = 5, anno_height = 1,
+#           keepGeneOrder= FALSE, cBioPortal = TRUE,
+#           sepwd_genes = 3.5, sepwd_samples = 3.5, #titleText = sampleID,
+#           titleFontSize = 1.5, bgCol = "white", borderCol = "white", fill = TRUE)
+#   #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
+# dev.off()
+
+# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_pnf_mpnst_passfiltered_GOI.pdf", height = 40, width = 40)
+# maftools::coOncoplot(m1 = pnf_maf,
+#                      m2 = mpnst_maf,
+#                      m1Name = "Plexiform Neurofibroma",
+#                      m2Name = "MPNST",
+#                      genes = gene_list,
+#                      clinicalFeatures1 = "individualID",
+#                      clinicalFeatures2 = "individualID",
+#                      annotationFontSize = 5,
+#                      geneNamefont = 2,
+#                      showSampleNames = FALSE,
+#                      SampleNamefont = 3,
+#                      keepGeneOrder = TRUE,
+#                      sepwd_genes1 = 10,
+#                      sepwd_samples1 = 20,
+#                      sepwd_genes2 = 10,
+#                      sepwd_samples2 = 20,
+#                      legendFontSize = 3,
+#                      removeNonMutated = FALSE,
+#                      bgCol = "light grey", borderCol = "white"
+#                      )
+# dev.off()
+
+```
+
+&nbsp;
+
+### Filtered variants in Triad Samples:
+
+Now we specifically choose the patients who provided samples for normal, benign, and malignant tissue. These set of samples are called "TRIADS". The patients with triad samples are:
+"JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-031", "JH-2-045", "JH-2-055", "JH-2-084".
+
+```{r subset maf-triad, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+triad_tsb <- c("JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-031", "JH-2-045", "JH-2-055", "JH-2-084")
+
+pnf_triad_tsb <- jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[(jhu_triplicates_clinicaldata$individualID %in% triad_tsb) & (jhu_triplicates_clinicaldata$tumorType == "Plexiform Neurofibroma")]
+
+mpnst_triad_tsb <- jhu_triplicates_clinicaldata$Tumor_Sample_Barcode[(jhu_triplicates_clinicaldata$individualID %in% triad_tsb) & (jhu_triplicates_clinicaldata$tumorType == "Malignant Peripheral Nerve Sheath Tumor")]
+
+
+## subset MAF
+mpnst_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = mpnst_triad_tsb)
+#PASS filter
+mpnst_maf@data <- mpnst_maf@data %>% dplyr::filter(mpnst_maf@data$FILTER != "common_variant" & mpnst_maf@data$IMPACT == "HIGH")
+
+#replace TSB with individualID
+#as1$Values[match(as2$ID, as1$ID)] <- as2$Values
+mpnst_maf@data$Tumor_Sample_Barcode[match(mpnst_maf@clinical.data$Tumor_Sample_Barcode, mpnst_maf@data$Tumor_Sample_Barcode)] <- mpnst_maf@clinical.data$individualID
+
+pnf_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = pnf_triad_tsb)
+#PASS filter
+pnf_maf@data <- pnf_maf@data %>% dplyr::filter(pnf_maf@data$FILTER != "common_variant" & pnf_maf@data$IMPACT == "HIGH")
+pnf_maf@data$Tumor_Sample_Barcode[match(pnf_maf@clinical.data$Tumor_Sample_Barcode, pnf_maf@data$Tumor_Sample_Barcode)] <- pnf_maf@clinical.data$individualID
+
+```
+
+![Figure 5](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.png "shows the filtered variants in top 500 mutated genes in PNF and MPNST tumors in triads. samples.") 
+![Figure 6](/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.png "shows filtered variants in our list of genes of interest in the triads.")
+
+```{r co-oncoplot-triad, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
+# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_passfiltered_top.pdf", height = 40, width = 40)
+# oncoplot(maf_file, top = 100,
+#          altered = TRUE,
+#          drawRowBar = FALSE, showTumorSampleBarcodes = TRUE, sortByAnnotation = TRUE,
+#          clinicalFeatures = c("tumorType","individualID"),
+#          annotationFontSize = 5, fontSize = 5,legendFontSize = 5, anno_height = 1,
+#          keepGeneOrder= FALSE, cBioPortal = TRUE,
+#          sepwd_genes = 3.5, sepwd_samples = 3.5, #titleText = sampleID,
+#          titleFontSize = 1.5, bgCol = "white", borderCol = "white", fill = TRUE)
+#   #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
+# dev.off()
+# 
+# pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Somatic_triad_pnf_mpnst_samples_passfiltered_GOI.pdf", height = 40, width = 40)
+# maftools::coOncoplot(m1 = pnf_maf,
+#                      m2 = mpnst_maf,
+#                      m1Name = "Plexiform Neurofibroma",
+#                      m2Name = "MPNST",
+#                      genes = gene_list,
+#                      clinicalFeatures1 = c("individualID", "specimenID"),
+#                      clinicalFeatures2 = c("individualID", "specimenID"),
+#                      annotationFontSize = 3,
+#                      geneNamefont = 2,
+#                      sepwd_genes1 = 10,
+#                      sepwd_samples1 = 20,
+#                      sepwd_genes2 = 10,
+#                      sepwd_samples2 = 20,
+#                      legendFontSize = 3,
+#                      removeNonMutated = FALSE,
+#                      bgCol = "light grey", borderCol = "white"
+#                      )
+# dev.off()
+
+# maf_file <- maftools::merge_mafs(list(mpnst_maf, pnf_maf))
+# PlotOncogenicPathways(maf = maf_file, 
+#                       pathways = "RTK-RAS",
+#                       fontSize = 2,
+#                       showTumorSampleBarcodes = TRUE)
+
+```
