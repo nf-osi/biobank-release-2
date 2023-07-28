@@ -1,0 +1,491 @@
+---
+title: "Project 1: Analysis of somatic variants from intra-patient tumors to understand progression of benign tumors to malignancy"
+author:
+  name: Jineta Banerjee
+  affiliation: Sage Bionetworks
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+    number_sections: yes
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+#library(synapser)
+#library(synapserutils)
+
+library(BiocManager)
+library(gProfileR)
+#library(GOsummaries)
+library(tidyverse)
+library(DT)
+library(vcfR)  ##read vcf files
+library(maftools)
+#library(GenVisR)
+library(magicfor)  ## store data from forloop as dataframe
+library(magrittr)
+#library(shiny)
+library(glue)
+library(DT)
+library(readxl)
+
+library(reticulate)
+
+```
+
+```{python login_to_synapse, eval=FALSE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "")
+
+```
+
+## Introduction
+
+Approximately 50% of people with NF1 develop plexiform neurofibromas (PN), and approximately 10% of patients with PN develop malignant peripheral nerve sheath tumors (MPNSTs) with a low 5-year survival rate of 30-50%. Recent studies suggest that many PNs transform into atypical neurofibromas, which in turn can develop into MPNST. The mechanisms underlying such tumor progression are poorly understood, limiting therapeutic options for both PNs and MPNSTs. While selumetinib (FDA approved) and cabozantinib (in clinical trials) are possible treatment options for a subset of PNs, once progressed to MPNSTs, there are no pharmacologic therapeutic options available to the patients beyond traditional chemotherapies. Identifying genetic indicators of PN to MPNST progression may help improve tumor treatment and identify new therapeutic avenues.
+
+**Hypothesis:**
+
+The JHU Biobank has generated samples and standardized sequencing data from a unique set of patients with both benign and malignant forms of NF1 tumors. The data from these patient triads include samples from normal blood, benign tumor, and malignant tumor from the same patient (n=8 patients, with more expected in next batches). **We hypothesize that genetic changes identified in these patient triads can inform our understanding of the cellular pathways involved in NF1 tumor progression and help identify candidate drugs that specifically target progressing tumors.**
+
+**Specific Aim 1: Identify intra-patient and inter-patient genetic changes that correlate with progression from benign to malignant NF1 tumors**
+
+Experiment 1.1: Analysis of somatic single nucleotide variants (SNVs) in whole exome sequencing data from all NF1 patients to understand inter-patient landscape of genomic variants
+
+Experiment 1.2: Analysis of somatic single nucleotide variants (SNVs) in whole exome sequencing data from patients with known benign to malignant tumor progression
+
+## Methods:
+
+### Somatic Variant Calling
+
+Raw fastq data files were quality checked using FastQC v0.11.9 and a report was generated using MultiQC v1.8. Fastq files were aligned to GRCh38 using BWA 0.7.17-r1188. Duplicates were marked using GATK MarkDuplicates, and bases recalibrated using GATK BaseRecalibrator and GATK ApplyBQSR (GATK v4.3.0.0). Somatic single nuceltotide variants were then called using Strelka2 software (Strelka v2.9.10). Strelka 2 was shown to have high precision and recall for single nucleotide variants compared to others as tested in the precisionFDA challenge ([Ref](https://www.nature.com/articles/s41598-020-60559-5#:~:text=In%20addition%2C%20our%20study%20revealed,frequency%20was%20lower%20than%2010%25.)). The variants were annotated using Variant Effect Predictor (VEP v99.2) and converted to MAF files using vcf2maf (vcf2maf v1.6.21). All of these steps were completed on Nextflow Tower running the standardized nf-core pipeline [sarek v3.1.2](https://nf-co.re/sarek/3.1.2).
+
+## Results:
+
+### Sample Summary
+
+```{bash}
+
+#clinical data
+#synapse get syn52177066
+
+#Merged MAF file
+#synapse get syn52073131
+```
+
+```{r clindata, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+# READ IN OFFLINE SAMPLESHEET
+
+jhu_clinicaldata_1 <- readxl::read_xlsx("~/Biobank-samples-map-clinical-051223.xlsx") %>% 
+  dplyr::filter(assay == "Whole Exome Sequencing") %>% 
+  dplyr::mutate(Aliquot_ID_Synapse_NEW = replace_na(Aliquot_ID_Synapse_NEW, "A")) %>% 
+  dplyr::mutate(Tumor_Sample_Barcode = stringr::str_c(SpecimenID_Synapse_NEW, "-", Aliquot_ID_Synapse_NEW)) %>% 
+  dplyr::mutate(
+    # Create categories
+    age_group = dplyr::case_when(
+      age <= 10            ~ "0-10",
+      age > 10 & age <= 20 ~ "11-20",
+      age > 20 & age <= 30 ~ "21-30",
+      age > 30 & age <= 40 ~ "31-40",
+      age > 40 & age <= 50 ~ "41-50",
+      age > 50             ~ "> 50"
+    ),
+    # Convert to factor
+    age_group = factor(
+      age_group,
+      level = c("0-10", "11-20","21-30", "31-40", "41-50", "> 50")
+    )
+  ) %>% 
+  dplyr::select(tumorType, sex, age_group, location, tissue, individualID, Tumor_Sample_Barcode) 
+```
+
+The table below shows the count of all different tumor samples present in batches 1, 2, and 3 of the JHU NF1 Biospecimen Repository.
+
+```{r samples, eval=TRUE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+#DT::datatable(jhu_clinicaldata_1[, c("individualID", "tumorType")] %>%  arrange(individualID) %>% drop_na())
+
+# print clinical data
+jhu_clinicaldata_1[, c("individualID", "tumorType")] %>% 
+    group_by(as.factor(tumorType)) %>% 
+    count() %>% 
+    arrange(-n) %>% 
+  knitr::kable() 
+
+```
+
+```{r get-data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+somatic_snv <- maftools::read.maf("~/syn4939902-somatic-Strelka2.merged.maf",
+                                       clinicalData = jhu_clinicaldata_1,
+                                       rmFlags = TRUE)
+```
+
+```{r colors, echo=FALSE, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+color_list <- c("#0D3B66", "#2d728f","#61C9A8","#7E52A0", "#F4D35E","#f49e4c","#ab3428","#C49991", "#279AF1", "#F7F7FF","#caf0f8", "#48cae4", "#0077b6", "#023e8a", "#03045e")
+values <- c(as.factor(jhu_clinicaldata_1$tumorType), as.factor(jhu_clinicaldata_1$sex), as.factor(jhu_clinicaldata_1$age_group))
+names(color_list) <- levels(values)
+
+```
+
+```{r gene-list, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+gene_list <- c("NF1",
+"NF2",
+"TP53",
+"CDKN2A",
+"EED",
+"SUZ12",
+"CHD4",
+"EZH2",
+"EPC1",
+"ASTE1",
+"DAXX",
+"ATRX",
+"PCLO",
+"SPRED1",
+"TYK2",
+"BRAF",
+"ERBB1",
+"ERBB4",
+"LRP1B",
+"MSH3",
+"MLL2",
+"MLL3",
+"KDM2B",
+"TSC2",
+"PBRM1",
+"FLCN",
+"CSF1R",
+"ATR",
+"PTPN11",
+"KDR",
+"MET",
+"PIK3CA",
+"KIT",
+"PDGFRA",
+"FGFR1",
+"RASSF9",
+"TGFB1",
+"GNAS",
+"EPHB6",
+"ATM",
+"PMS2",
+"STK11",
+"IGF1R",
+"RBBP7",
+"AEBP2",
+"RB1", 
+"CHEK2",
+"PTEN",
+"NCOR2",
+"MDM2",
+"ROS1",
+"SMARCA4",
+"MSH6",
+"BRIP1",
+"FANCA",
+"MYC",
+"NOTCH4",
+"APC",
+"FLT1",
+"NCOR1")
+
+```
+
+### Elucidating the somatic variant landscape of the different tumor types among the biobank samples:
+
+First we examine SNVs detected in all samples available from the repository. Figure 1 shows that all variants that were called with high confidence and passed the common variant filter of Strelka2 were found to be single nucleotide variants. They include missense, nonsense, splice-site, nonstop, and translation start-site variants. The NF1 gene features as one of the top mutated genes in the samples provided.
+
+```{r oncoplot-all, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_summary.pdf", height = 20, width = 20)
+plotmafSummary(maf = somatic_snv,
+               rmOutlier = TRUE,
+               addStat = 'median',
+               dashboard = TRUE,
+               titvRaw = FALSE,
+               fs = 5)
+#dev.off()
+```
+
+![Summary of Single Nucleotide Variants (SNVs) of all samples present in biobank. The plots highlight Variant classification, variant type, SNV classes, Variants per sample, and the top ten mutated genes in the samples provided.](images/Somatic_all_samples_Strelka2PASSfiltered_summary.png){width="70%"}
+
+ 
+
+Through various experimental approaches various genes have been identified to be of interest to the NF1 research community. We consulted six seminal articles ([Cortes-Ciriano et al, 2023](https://pubmed.ncbi.nlm.nih.gov/36598417/), [Pollard et al, 2020](https://pubmed.ncbi.nlm.nih.gov/32561749/), [Zhang et al, 2014](https://pubmed.ncbi.nlm.nih.gov/25305755/),[Lee et al, 2014](https://pubmed.ncbi.nlm.nih.gov/25240281/), [De Raedt et al, 2014](https://pubmed.ncbi.nlm.nih.gov/25119042/), [Sohier et al, 2017](https://pubmed.ncbi.nlm.nih.gov/28124441/)) to generate a list of genes that are deemed to be of interest to the community. Figure 2 below shows an oncoplot of all somatic variants identified in this list of genes of interest.
+
+```{r oncoplot-goi, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=70, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_GOI.pdf", height = 70, width = 40)
+oncoplot(somatic_snv, genes = gene_list,
+         altered = TRUE,
+         removeNonMutated = FALSE,
+         drawRowBar = FALSE, drawColBar = FALSE, showTumorSampleBarcodes = FALSE,
+         clinicalFeatures = c("tumorType", "sex", "age_group"), sortByAnnotation = TRUE,
+         #annotationColor = list(color_list),
+         annotationFontSize = 5, fontSize = 5, legendFontSize = 5, anno_height = 1,
+         keepGeneOrder= FALSE, cBioPortal = TRUE,
+         sepwd_genes = 3.5, sepwd_samples = 3.5, #titleText = sampleID,
+         titleFontSize = 1.5, bgCol = "white", borderCol = "white", fill = TRUE)
+  #mtext(somatic_snv@clinical.data$Tumor_Sample_Barcode)
+#dev.off()
+
+```
+
+![Somatic SNVs in genes of interest for all samples.](images/Somatic_all_samples_Strelka2PASSfiltered_GOI.png){width="70%"}
+
+ 
+
+Once again, the NF1 gene floats to the top as having variants in most number of samples. Given that most of the samples belong to Plexiform Neurofibroma (PNF) and MPNST tumor types, and the plexiform neurofibromas are often likely to undergo malignant transformation to MPNST, we dive deeper into these two tumor types in the next few sections.
+
+### Somatic variants in PNF and MPNST samples:
+
+Figure 3 shows a side-by-side comparison of the variants in genes of interest in these two tumortypes.
+
+```{r subset-maf, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+mpnst_tsb <- jhu_clinicaldata_1$Tumor_Sample_Barcode[jhu_clinicaldata_1$tumorType == "Malignant Peripheral Nerve Sheath Tumor"]
+
+pnf_tsb <- jhu_clinicaldata_1$Tumor_Sample_Barcode[jhu_clinicaldata_1$tumorType == "Plexiform Neurofibroma"]
+
+mpnst_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = mpnst_tsb)
+
+pnf_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = pnf_tsb)
+```
+
+We note that 20% of PNF samples and 12% of MPNST samples show the presence of somatic SNVs in the NF1 gene. There may be two reasons for this: a) Samples may contain microdeletions or copy number variations in NF1 gene which would not be detected in this analysis, b) Samples may have lower tumor purity or depth of sequencing resulting in low detection range for NF1 variants.
+
+![Somatic SNVs in genes of interest specifically in PNF and MPNST samples](images/Somatic_pnf_mpnst_Strelka2PASSfiltered_GOI.png){width="90%"}
+
+```{r co-oncoplot, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_pnf_mpnst_Mutect2PASSfiltered_GOI.pdf", height = 40, width = 40)
+maftools::coOncoplot(m1 = pnf_maf,
+                     m2 = mpnst_maf,
+                     m1Name = "Plexiform Neurofibroma",
+                     m2Name = "MPNST",
+                     genes = gene_list,
+                     clinicalFeatures1 = c("individualID", "sex", "age_group"),
+                     clinicalFeatures2 = c("individualID", "sex", "age_group"),
+                     sortByAnnotation1 = TRUE,
+                     sortByAnnotation2 = TRUE,
+                     sampleOrder1 = pnf_maf@clinical.data$Tumor_Sample_Barcode,
+                     sampleOrder2 = mpnst_maf@clinical.data$Tumor_Sample_Barcode,
+                     annotationFontSize = 5,
+                     geneNamefont = 2,
+                     showSampleNames = FALSE,
+                     SampleNamefont = 3,
+                     keepGeneOrder = FALSE,
+                     sepwd_genes1 = 10,
+                     sepwd_samples1 = 20,
+                     sepwd_genes2 = 10,
+                     sepwd_samples2 = 20,
+                     legendFontSize = 3,
+                     removeNonMutated = FALSE,
+                     #bgCol = "light grey", borderCol = "white"
+                     )
+#dev.off()
+```
+
+#### Variants in NF1 gene:
+
+We further dive in to visualize the main SNVs and their protein consequences in the PNF and MPNST samples. Figure 4 shows a lollipop plot that visualizes the main SNVs and the protein effect of the variant in NF1 gene. The top half of the plot highlights position of variants detected in different plexiform neurofibroma samples. The bottom half highlights variants detected in MPNST samples.
+
+ 
+
+```{r lollipop, eval=TRUE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 5, fig.width=20, fig.cap="Lollipop plot of NF1 gene"}
+
+maftools::lollipopPlot2(
+  m1 = pnf_maf,
+  m2 = mpnst_maf,
+  m1_name = "Plexiform Neurofibroma",
+  m2_name = "MPNST",
+  gene = 'NF1',
+  AACol1 = 'HGVSp_Short',
+  AACol2 = 'HGVSp_Short',
+  m1_label = 'all',
+  m2_label = 'all',
+  legendTxtSize = 2,
+  labPosSize = 2,
+  pointSize = 3,
+  alpha = 0.8
+)
+```
+
+ 
+
+#### Oncogenic pathways in PNF and MPNST samples:
+
+The genetic variants in the PNF and MPNST samples may cause disruption of various oncogenic pathways. Figure 5A-B below show that RAS and NOTCH are mainly affected by the variants present in PNF samples. However, in MPNST samples, the genetic variants mostly affect the Notch and Hippo pathways (Figure5 C-D).
+
+![Oncogenic pathways affected in PNF and MPNST samples. Tumor suppressor genes are in red and oncogenes are in blue font.](images/Pathways_pnf_mpnst_somatic.png){width="90%"}
+
+ 
+
+```{r pathways-all, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_1.pdf", height = 40, width = 40)
+OncogenicPathways(maf = pnf_maf, 
+                  fontSize = 10)
+#dev.off()
+```
+
+```{r pathways-all-2, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_2.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = pnf_maf,
+                      pathways = "RTK-RAS",
+                      fontSize = 2,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+```
+
+```{r pathways-all-3, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_3.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = pnf_maf,
+                      pathways = "NOTCH",
+                      fontSize = 2,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+```
+
+```{r pathways-all-4, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=20, fig.width=20}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_1.pdf", height = 40, width = 40)
+OncogenicPathways(maf = mpnst_maf, 
+                  fontSize = 10)
+#dev.off()
+```
+
+```{r pathways-all-5, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_2.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = mpnst_maf,
+                      pathways = "NOTCH",
+                      fontSize = 5,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+```
+
+```{r pathways-all-6, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_3.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = mpnst_maf,
+                      pathways = "Hippo",
+                      fontSize = 5,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+```
+
+### Somatic variants in intra-patient tumors:
+
+The JHU NF1 Biospecimen repository with great effort have collected multiple samples of progressing tumortypes from 8 individual patients. These "triad" samples include a trio of normal, benign, and malignant tissue from the **same patient**. The patients with triad samples are: "JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-031", "JH-2-045", "JH-2-055", "JH-2-084".
+
+However, after updates to the sample information all tumor samples related to JH-2-031 were found to be MPNSTs. So JH-2-031 was excluded from the analyses below.
+
+Figure 6 below shows somatic variants in our list of genes of interest detected in the triad samples. Like before we note that many of the samples do not show a pre-existant somatic variant in NF1 gene. The Biobank is currently looking at tumor purity information for these samples to rule out any purity related issues.
+
+```{r subset-maf-triad, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+triad_tsb <- c("JH-2-002", "JH-2-015", "JH-2-016", "JH-2-023", "JH-2-045", "JH-2-055", "JH-2-084")
+
+pnf_triad_tsb <- jhu_clinicaldata_1$Tumor_Sample_Barcode[(jhu_clinicaldata_1$individualID %in% triad_tsb) & (jhu_clinicaldata_1$tumorType == "Plexiform Neurofibroma") | (jhu_clinicaldata_1$individualID %in% triad_tsb) & (jhu_clinicaldata_1$tumorType == "Cutaneous Neurofibroma")]
+
+mpnst_triad_tsb <- jhu_clinicaldata_1$Tumor_Sample_Barcode[(jhu_clinicaldata_1$individualID %in% triad_tsb) & (jhu_clinicaldata_1$tumorType == "Malignant Peripheral Nerve Sheath Tumor")]
+
+
+## subset MAF
+mpnst_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = mpnst_triad_tsb)
+
+pnf_maf <- maftools::subsetMaf(maf = somatic_snv, 
+                                 tsb = pnf_triad_tsb)
+
+
+```
+
+```{r co-oncoplot-triad, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_triad_pnf_mpnst_samples_Strelka2PASSfiltered_GOI.pdf", height = 40, width = 40)
+maftools::coOncoplot(m1 = pnf_maf,
+                     m2 = mpnst_maf,
+                     m1Name = "Benign Tumor",
+                     m2Name = "Malignant Tumor",
+                     genes = gene_list,
+                     clinicalFeatures1 = c("individualID", "tumorType", "sex", "age_group"),
+                     clinicalFeatures2 = c("individualID", "tumorType", "sex", "age_group"),
+                     sortByAnnotation1 = TRUE,
+                     sortByAnnotation2 = TRUE,
+                     annotationFontSize = 3,
+                     geneNamefont = 2,
+                     sepwd_genes1 = 10,
+                     sepwd_samples1 = 20,
+                     sepwd_genes2 = 10,
+                     sepwd_samples2 = 20,
+                     legendFontSize = 3,
+                     removeNonMutated = FALSE,
+                     bgCol = "light grey", borderCol = "white"
+                     )
+#dev.off()
+
+```
+
+![Somatic variants in triad samples.](images/Somatic_triad_pnf_mpnst_samples_Strelka2PASSfiltered_GOI.png){width="100%"}
+
+ 
+
+#### Oncogenic pathways in benign and malignant TRIAD samples:
+
+Figure 7 below shows the effect of the SNVs in benign and malignant tumors. We note here that while the genomic variants mostly affect the Wnt pathway in the benign tumors, the malignant tumors have most samples with variants affecting the Hippo Pathway. Thus the Hippo pathway may be a candidate that plays an important role in the transition from a benign to malignant tumor type in a plexiform neurofibroma patient. As noted in many other studies([Feltri et al, 2018](https://www.sciencedirect.com/science/article/pii/S1535610818300163#:~:text=MPNSTs%20appear%20in%20only%200.001,and%2040%25%20chance%20of%20metastasis.), [Brosseau et al, 2020](https://www.nature.com/articles/s41416-020-0903-x) and others), the Hippo pathway plays a significant role in sporadic and NF1 associated MPNST tumorigenesis. The study of triad samples suggest that it may play a significant role in malignant transition from plexiform neurofibromas to MPNSTs. Further experiments are required to validate the role of Hippo pathway in the malignant transition from PNF to MPNST.
+
+![Oncogenic pathways affected in benign and malignant tumors](images/Pathways_triad_pnf_mpnst_samples.png){width="70%"}
+
+ 
+
+```{r pathways-pnf, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_1.pdf", height = 40, width = 40)
+OncogenicPathways(maf = pnf_maf, 
+                  fontSize = 10)
+#dev.off()
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_2.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = pnf_maf,
+                      pathways = "WNT",
+                      fontSize = 5,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+
+```
+
+```{r pathways-mpnst, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_3.pdf", height = 40, width = 40)
+OncogenicPathways(maf = mpnst_maf, 
+                  fontSize = 10)
+#dev.off()
+
+#pdf("/Users/jineta/git/gitrepo/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_4.pdf", height = 40, width = 40)
+PlotOncogenicPathways(maf = mpnst_maf,
+                      pathways = "Hippo",
+                      fontSize = 5,
+                      showTumorSampleBarcodes = TRUE)
+#dev.off()
+
+```
