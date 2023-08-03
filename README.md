@@ -2,6 +2,9 @@
 
 ## Overview
 This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release.
+
+# NOTE: Always start a **pull request** against the `dev` branch and tag repository members for review. DO NOT COMMIT CODE DIRECTLY INTO DEV branch.
+
 ## Layout
 
 The repository is split into seven main directories, many of which have subdirectories. This structure has been designed to be easily navigable by humans and computers alike, allowing for rapid location of specific files and instructions. Within each directory is a `README.md` file which summarizes the purpose of that directory as well as some examples where necessary. This structure may not be perfect for your intended us and may need to be modified. Each section is briefly described below. 
