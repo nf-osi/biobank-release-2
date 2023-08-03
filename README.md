@@ -3,7 +3,7 @@
 ## Overview
 This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release.
 
-# NOTE: Always start a **pull request** against the `dev` branch and tag repository members for review. DO NOT COMMIT CODE DIRECTLY INTO DEV branch.
+## :warning: NOTE: Always start a **pull request** against the `dev` branch and tag repository members for review. DO NOT COMMIT CODE DIRECTLY INTO DEV branch.
 
 ## Layout
 
