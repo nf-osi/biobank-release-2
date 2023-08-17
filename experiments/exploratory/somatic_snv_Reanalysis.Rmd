@@ -1,5 +1,5 @@
 ---
-title: "Project 1: Analysis of somatic variants from intra-patient tumors to understand progression of benign tumors to malignancy"
+title: "Project 1: Analysis of somatic variants from intra and inter-patient tumors to understand progression of benign tumors to malignancy"
 author:
   name: Jineta Banerjee
   affiliation: Sage Bionetworks
