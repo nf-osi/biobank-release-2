@@ -90,15 +90,15 @@ metadata = syn.tableQuery(query).asDataFrame()
 ```{python get-data, echo = FALSE}
 
 # get tsv files
-#syn.get("syn49554376", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/samplecheck") #PDX
-#syn.get("syn49556298", downloadLocation = "/Users/jineta/git/gitrepo/biobank-release-2/data/samplecheck") #PT
+#syn.get("syn49554376", downloadLocation = "~/biobank-release-2/data/samplecheck") #PDX
+#syn.get("syn49556298", downloadLocation = "~/biobank-release-2/data/samplecheck") #PT
 
 ``` 
 
 ```{r load data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 
-pdx <- read.table("/Users/jineta/git/gitrepo/biobank-release-2/data/samplecheck/salmon.merged.gene_counts.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
-pt <- read.table("/Users/jineta/git/gitrepo/biobank-release-2/data/samplecheck/salmon.merged.gene_counts_PT.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
+pdx <- read.table("~/biobank-release-2/data/samplecheck/salmon.merged.gene_counts.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
+pt <- read.table("~/biobank-release-2/data/samplecheck/salmon.merged.gene_counts_PT.tsv", sep = '\t', header = TRUE) %>% as.data.frame()
 
 totalcounts <- merge(pdx, pt, by= c("gene_id", "gene_name"))
 rownames(totalcounts) <- totalcounts$gene_id
