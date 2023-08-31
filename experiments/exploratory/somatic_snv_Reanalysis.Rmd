@@ -74,20 +74,20 @@ Raw fastq data files were quality checked using FastQC v0.11.9 and a report was 
 
 ### Sample Summary
 
-```{bash}
+```{python}
 
 #clinical data
-#synapse get syn52177066
+syn.get("syn52177066", downloadLocation = "~/biobank-release-2/data/")
 
 #Merged MAF file
-#synapse get syn52073131
+syn.get("syn52073131", downloadLocation = "~/biobank-release-2/data/")
 ```
 
 ```{r clindata, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
 
 # READ IN OFFLINE SAMPLESHEET
 
-jhu_clinicaldata_1 <- readxl::read_xlsx("~/Biobank-samples-map-clinical-051223.xlsx") %>% 
+jhu_clinicaldata_1 <- readxl::read_xlsx("~/biobank-release-2/data/Biobank-samples-map-clinical-051223.xlsx") %>% 
   dplyr::filter(assay == "Whole Exome Sequencing") %>% 
   dplyr::mutate(Aliquot_ID_Synapse_NEW = replace_na(Aliquot_ID_Synapse_NEW, "A")) %>% 
   dplyr::mutate(Tumor_Sample_Barcode = stringr::str_c(SpecimenID_Synapse_NEW, "-", Aliquot_ID_Synapse_NEW)) %>% 
@@ -127,7 +127,7 @@ jhu_clinicaldata_1[, c("individualID", "tumorType")] %>%
 
 ```{r get-data, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
 
-somatic_snv <- maftools::read.maf("~/syn4939902-somatic-Strelka2.merged.maf",
+somatic_snv <- maftools::read.maf("~/biobank-release-2/data/syn4939902-somatic-Strelka2.merged.maf",
                                        clinicalData = jhu_clinicaldata_1,
                                        rmFlags = TRUE)
 ```
@@ -211,7 +211,7 @@ First we examine SNVs detected in all samples available from the repository. Fig
 
 ```{r oncoplot-all, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_summary.pdf", height = 20, width = 20)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_summary.pdf", height = 20, width = 20)
 maftools::plotmafSummary(maf = somatic_snv,
                rmOutlier = TRUE,
                addStat = 'median',
@@ -229,7 +229,7 @@ Through various experimental approaches various genes have been identified to be
 
 ```{r oncoplot-goi, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=70, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_GOI.pdf", height = 70, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_all_samples_Strelka2PASSfiltered_GOI.pdf", height = 70, width = 40)
 maftools::oncoplot(somatic_snv, genes = gene_list,
          altered = TRUE,
          removeNonMutated = FALSE,
@@ -274,7 +274,7 @@ We note that 20% of PNF samples and 12% of MPNST samples show the presence of so
 
 ```{r co-oncoplot, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Somatic_pnf_mpnst_Mutect2PASSfiltered_GOI.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_pnf_mpnst_Mutect2PASSfiltered_GOI.pdf", height = 40, width = 40)
 maftools::coOncoplot(m1 = pnf_maf,
                      m2 = mpnst_maf,
                      m1Name = "Plexiform Neurofibroma",
@@ -339,7 +339,7 @@ The genetic variants in the PNF and MPNST samples may cause disruption of variou
 
 ```{r pathways-all, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_1.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_1.pdf", height = 40, width = 40)
 maftools::OncogenicPathways(maf = pnf_maf, 
                   fontSize = 10)
 #dev.off()
@@ -347,7 +347,7 @@ maftools::OncogenicPathways(maf = pnf_maf,
 
 ```{r pathways-all-2, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_2.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_2.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = pnf_maf,
                       pathways = "RTK-RAS",
                       fontSize = 2,
@@ -357,7 +357,7 @@ maftools::PlotOncogenicPathways(maf = pnf_maf,
 
 ```{r pathways-all-3, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_3.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_pnf_somatic_3.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = pnf_maf,
                       pathways = "NOTCH",
                       fontSize = 2,
@@ -367,7 +367,7 @@ maftools::PlotOncogenicPathways(maf = pnf_maf,
 
 ```{r pathways-all-4, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=20, fig.width=20}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_1.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_1.pdf", height = 40, width = 40)
 maftools::OncogenicPathways(maf = mpnst_maf, 
                   fontSize = 10)
 #dev.off()
@@ -375,7 +375,7 @@ maftools::OncogenicPathways(maf = mpnst_maf,
 
 ```{r pathways-all-5, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_2.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_2.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = mpnst_maf,
                       pathways = "NOTCH",
                       fontSize = 5,
@@ -385,7 +385,7 @@ maftools::PlotOncogenicPathways(maf = mpnst_maf,
 
 ```{r pathways-all-6, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height=40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_3.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_mpnst_somatic_3.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = mpnst_maf,
                       pathways = "Hippo",
                       fontSize = 5,
@@ -422,7 +422,7 @@ pnf_maf <- maftools::subsetMaf(maf = somatic_snv,
 
 ```{r co-oncoplot-triad, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Somatic_triad_pnf_mpnst_samples_Strelka2PASSfiltered_GOI.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Somatic_triad_pnf_mpnst_samples_Strelka2PASSfiltered_GOI.pdf", height = 40, width = 40)
 maftools::coOncoplot(m1 = pnf_maf,
                      m2 = mpnst_maf,
                      m1Name = "Benign Tumor",
@@ -460,12 +460,12 @@ Figure 7 below shows the effect of the SNVs in benign and malignant tumors. We n
 
 ```{r pathways-pnf, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_1.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_1.pdf", height = 40, width = 40)
 maftools::OncogenicPathways(maf = pnf_maf, 
                   fontSize = 10)
 #dev.off()
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_2.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_2.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = pnf_maf,
                       pathways = "WNT",
                       fontSize = 5,
@@ -476,12 +476,12 @@ maftools::PlotOncogenicPathways(maf = pnf_maf,
 
 ```{r pathways-mpnst, eval=FALSE, echo=FALSE, results='as-is', message=FALSE, warning=FALSE, fig.height= 40, fig.width=40}
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_3.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_3.pdf", height = 40, width = 40)
 maftools::OncogenicPathways(maf = mpnst_maf, 
                   fontSize = 10)
 #dev.off()
 
-#pdf("../../figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_4.pdf", height = 40, width = 40)
+#pdf("~/biobank-release-2/experiments/figures/Updated_processed_w_new_sampleID/Pathways_triad_pnf_mpnst_samples_4.pdf", height = 40, width = 40)
 maftools::PlotOncogenicPathways(maf = mpnst_maf,
                       pathways = "Hippo",
                       fontSize = 5,
