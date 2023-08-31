@@ -1,0 +1,60 @@
+---
+title: "How to download files from Synapse"
+author:
+  name: Jineta Banerjee
+  affiliation: Sage Bionetworks
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+    number_sections: yes
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Install and load required libraries
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+library(BiocManager)
+library(tidyverse)
+library(magrittr)
+library(DT)
+library(readxl)
+library(reticulate) 
+
+```
+
+## Log into Synapse using the Python API
+
+```{python login_to_synapse, eval=FALSE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. 
+## If you dont have this setup, please make the file before trying to login.
+## Please see documentation here: https://python-docs.synapse.org/build/html/index.html
+
+import synapseclient
+syn = synapseclient.Synapse()
+
+syn.login(email= "jineta.banerjee",
+                   apiKey= "")
+
+```
+
+## Download the required files from Synapse using SynapseIDs
+
+```{python download_files_from_synapse, eval=FALSE, echo=FALSE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+# download simple clinical data (no approval required once publication is online)
+syn.get("syn52369666", downloadLocation = "~/biobank-release-2/data/")
+
+# download extended clinical data (access approval required)
+syn.get("syn52177066", downloadLocation = "~/biobank-release-2/data/")
+
+# download WES somatic variant data (no approval required once publication is online)
+syn.get("syn52073131", downloadLocation = "~/biobank-release-2/data/")
+```
+
+
