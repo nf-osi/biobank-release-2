@@ -1,0 +1,72 @@
+---
+title: "annotate_nf_sarek_files"
+author: "Jineta Banerjee"
+date: "2023-10-12"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up
+
+First load the `nfportalutils` package and log in.
+The recommended default usage of `syn_login` is to use it without directly passing in credentials.
+Instead, have available the `SYNAPSE_AUTH_TOKEN` environment variable with your token stored therein.
+
+```{r setup}
+
+library(nfportalutils)
+library(data.table)
+
+syn_login(authtoken = "eyJ0eXAiOiJKV1QiLCJraWQiOiJXN05OOldMSlQ6SjVSSzpMN1RMOlQ3TDc6M1ZYNjpKRU9VOjY0NFI6VTNJWDo1S1oyOjdaQ0s6RlBUSCIsImFsZyI6IlJTMjU2In0.eyJhY2Nlc3MiOnsic2NvcGUiOlsidmlldyIsImRvd25sb2FkIiwibW9kaWZ5Il0sIm9pZGNfY2xhaW1zIjp7fX0sInRva2VuX3R5cGUiOiJQRVJTT05BTF9BQ0NFU1NfVE9LRU4iLCJpc3MiOiJodHRwczovL3JlcG8tcHJvZC5wcm9kLnNhZ2ViYXNlLm9yZy9hdXRoL3YxIiwiYXVkIjoiMCIsIm5iZiI6MTY5NzE1MzQ3OCwiaWF0IjoxNjk3MTUzNDc4LCJqdGkiOiI0MDYyIiwic3ViIjoiMzM4OTMxMCJ9.iHI0zWxyzEJ973qOxArIeXdMHpbQF1QYhxQCrN043YDEMNYjRwUUMBB8Ea1LLdnRxU7_XHd_wM_vtDWoHpfEd3FYBWF8-lJExeV_MH9PQRtKJ-wGbyx89Im97EF2EoR2jsC9mxXz3_L_isT4B8Bs9P7NBew0RVTckZItSnjts7p7Z0GpkrQAzejwjoUpkksFfH05hj_qVokOUgKF937d7K07-FTlptq8J7fBZpv38qFhmezm-mcPjvsdr1_72Q2-dYzJW0wmgfEXyjib3eCDcm38JN5hgU5brqC-B2W-WLUoEMaqyNkQ8aAGk8w-ocRTx7kZPkfzgJ7aZ-WlLKLXEQ")
+```
+
+```{r helper}
+
+sample_io <- map_sample_io(
+  workflow =  "nf-sarek",
+  samplesheet = "syn52665062", # local file,
+  syn_out = "syn52601661",
+  sample_level = 3
+)
+# Modify workflow assignment a bit
+sample_io[workflow =="strelka", workflow := "Strelka2"]
+sample_io[workflow =="mutect2", workflow := "Mutect2"]
+
+```
+
+```{r add-provenance, results='hide'}
+
+wf_link <- c(FreeBayes = "https://nf-co.re/sarek/3.2.3/output#freebayes",
+             Mutect2 = "https://nf-co.re/sarek/3.2.3/output#gatk-mutect2",
+             Strelka2 = "https://nf-co.re/sarek/3.2.3/output#strelka2")
+
+add_activity_batch(sample_io$output_id, 
+                   sample_io$workflow, 
+                   wf_link[sample_io$workflow], 
+                   sample_io$input_id)
+
+```
+
+```{r make_manifest}
+
+manifest <- annotate_called_variants(sample_io, 
+                                     workflow_ref = wf_link[sample_io$workflow],
+                                     format = "auto",
+                                     template = "bts:ProcessedVariantCallsTemplate",
+                                     schema =
+    "https://raw.githubusercontent.com/nf-osi/nf-metadata-dictionary/main/NF.jsonld",
+    data_type = "auto",
+    verbose = TRUE,
+    dry_run = TRUE
+    )
+
+```
+
+```{r apply-annotations}
+
+annotate_with_manifest(manifest)
+```
+
+
