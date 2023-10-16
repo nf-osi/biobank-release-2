@@ -1,0 +1,401 @@
+---
+title: "Deseq2 output "
+author: ""
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: false
+    latex_engine: pdflatex
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+
+knit: (
+  function(inputFile, encoding) { 
+      pSubTitle <- paste(Sys.Date(), "RNAseq Deseq2" )
+     
+    rmarkdown::render( 
+      input       = inputFile, 
+      encoding    = encoding, 
+      params      = list(sub_title = pSubTitle),      
+      output_file = pSubTitle,
+      output_dir = "~/output") 
+       }
+       
+       )
+      
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo =F,message = F,warning = F,include = T)
+```
+
+
+
+# RNAseq data loading
+```{r,include=F}
+rm(list=ls())
+Path=getwd()
+COUNT_path=file.path(Path,"data","Count")
+Process_data=file.path(Path,"data","Process_data")
+
+Reference_path=file.path(Path,"data","Reference")
+dir.create(Process_data)
+```
+
+
+```{r,include=F}
+library(dplyr)
+library(ggplot2)
+ 
+```
+
+
+```{r}
+# GSEA_pathway_list in the reference folder
+load(file.path(Reference_path,"GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+```
+
+
+```{r}
+# Function
+PCA_Plot_3<- function (data,Annotation,VAR,Color) {
+  # logcountdata row:genes,column: samples
+  pca <- prcomp(data) 
+  pca_out<-as.data.frame(pca$x)
+  df_out<- pca_out %>%tibble::rownames_to_column(var=VAR)  %>% left_join(., Annotation) 
+  #df_out<- merge (pca_out,Annotation,by.x=0,by.y=0) 
+  
+  # label_color<- factor(df_out[,group])
+  ggplot(df_out,aes_string(x="PC1",y="PC2")) +geom_point(aes_string(colour = Color))
+}
+
+Batch_count_plot=function(logcount,sample_anno){
+  
+  logcount_2=logcount%>%t() %>%as.data.frame() %>%mutate(Sample_name=rownames(.))
+  Level=sample_anno %>%arrange(batch)%>%.$Sample_name
+  data_mod = reshape2::melt(logcount_2, id.vars="Sample_name", 
+                            measure.vars=rownames(logcount)) %>%left_join(sample_anno)%>%arrange(batch)
+  
+  data_mod$Sample_name=factor(data_mod$Sample_name,levels =Level )
+  #return(logcount_2)
+ ggplot(data_mod)+geom_boxplot(aes(x=Sample_name, y=value, color=batch))+xlab("Sample")+ylab("log2(Count+1)")+theme(axis.text.x=element_blank())
+  
+  
+}
+
+Deseq2_Deseq_function_2<- function (Countdata,Coldata) {
+  dds_fil <- DESeq2:: DESeqDataSetFromMatrix(countData =Countdata, colData = Coldata,
+                                             design = ~Group)
+
+  # keep <- rowSums(DESeq2::counts(dds_fil)) >= 10
+  # dds_fil_2  <- dds_fil[keep,]
+  dds_fil_Deg<- DESeq2::DESeq(dds_fil)
+  return(dds_fil_Deg)
+
+}
+
+Deseq_vst=function (Countdata,Coldata) {
+  deseq2Data <- DESeq2:: DESeqDataSetFromMatrix(countData =Countdata, colData = Coldata,
+                                             design = ~Group)
+  deseq2VST <- DESeq2::vst(deseq2Data)
+  
+  # Convert the DESeq transformed object to a data frame
+
+  deseq2VST <-   SummarizedExperiment::assay(deseq2VST)
+  #deseq2VST <- as.data.frame(deseq2VST)
+   
+  head(deseq2VST)
+  return(deseq2VST)
+}
+
+Deseq_norm_counts=function (Countdata,Coldata) {
+  deseq2Data <- DESeq2:: DESeqDataSetFromMatrix(countData =Countdata, colData = Coldata,
+                                                design = ~Group)
+  dds <- DESeq2::estimateSizeFactors(deseq2Data)
+  
+  # Convert the DESeq transformed object to a data frame
+  
+
+  normalized_counts <- DESeq2::counts(dds, normalized=TRUE) %>%as.data.frame()
+}
+
+Pathway_enrichment_analysis=function(singscore_name,cutoff) {
+  #Data=data.frame(Name=singscore_name) %>%mutate(Split=unlist(strsplit(Name,split="_")))
+  split_list=list()
+  for (i in 1:length(singscore_name)) {
+    Split=unlist(strsplit(singscore_name[i],split="_"))
+    split_list[[singscore_name[i]]]=Split
+  }
+  
+  combine=unlist(split_list) %>%gsub("TP53","P53",.)
+  common_words=c(c("UP","DN","GOBP","VS","OF","CELLS","CELL","TARGETS","FETAL","DESCARTES","GOMF","ACTIVITY","REACTOME","HP","MODULE","GOCC","RESPONSE","TRANSPORT","REGULATION","COMPLEX","UP.V1","KO","ABNORMAL","IN","PROCESS","CTRL","PBMC","ION","SIGNALING","WITH","BY","WP","KEGG","DN.V1","WT","A","B","C","D","E","PROTEIN","GENES","POS","HALLMARK","VIA","THE","AND","TO","CANCER","TUMOR","PATHWAY","POSITIVE","TREATED","BINDING"),c(1:9))
+  
+  combine_stat=data.frame(split=combine)%>%subset(!split%in%common_words)%>%  group_by(split) %>% summarise(n=n()) %>% dplyr::filter(!grepl("DAY",split )) %>% arrange(desc(n)) %>%dplyr::filter(n>=cutoff)
+  
+
+  
+}
+
+Pathway_select_by_keyword=function(singscore_name,keyword){
+  Pathway_list=list()
+  for (i in 1:length(singscore_name)) {
+    Split=unlist(strsplit(singscore_name[i],split="_"))
+    Intersect=intersect(Split,keyword)
+    if(length(Intersect)>0){
+      Pathway_list[[ singscore_name[i]]]=Intersect[1]
+      
+    }
+    
+  }
+  
+  return(Pathway_list)
+  }
+
+Singscore_data_plot_2=function(gene_list,expression_data,expression_data_anno,Annotation_File,stat_method){
+  Color=c("blue","red")
+  Gene_singscore= singcore_Normalized_GSEA(expression_data,gene_list)
+  
+  Annotation_file=Annotation_File[,c("Group")]  %>%as.data.frame()
+  rownames(Annotation_file)=Annotation_File$Sample_name
+  p2=GGplot_singscore_boxplot_2(Gene_singscore[[1]],Annotation_File,"Group",Color,"Sample_name",Method=stat_method)
+  
+  pheatmap_pathway_3 (expression_data_anno,unlist(gene_list),names(gene_list), Annotation_file,"V1")
+  list(p2)
+}
+
+
+singcore_GSEA=function (data,genelist, is.na=T) {
+  nm=names(genelist)
+  plist=list()
+  Data_prepare=singscore::rankGenes (data)
+  
+  for (i in seq_along(genelist)) { 
+    scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[,i]))%>%.[1]
+    colnames(scoredf)=paste0(nm[i],"_singscore")
+    plist[[i]]=scoredf
+  }
+  return(plist)
+  #output=do.call("cbind",plist)
+}
+
+singcore_Normalized_GSEA=function (data,genelist, is.na=T) {
+  nm=names(genelist)
+  plist=list()
+  Data_prepare=singscore::rankGenes (data)
+ # n_genes=length(intersect(genelist,rownames(data)))
+  
+   if( is.list(genelist)) {
+    for (i in 1:length(genelist)) { 
+      n_genes=length(intersect(unique(genelist[[i]]),rownames(data)))
+      if (n_genes>4){
+      scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[[i]]))%>%.[1]
+      scoredf$Normalized=scale(scoredf[,1])
+      colnames(scoredf)=c(paste0(nm[i],"_singscore") , paste0(nm[i],"_Normalized_singscore" ))
+      if(nrow(scoredf)==ncol(data)) {
+        plist[[nm[i]]]=scoredf
+      }
+      }
+     }
+  }
+  if(is.data.frame(genelist))  {
+    
+  for (i in seq_along(genelist)) { 
+    n_genes=length(intersect(unique(genelist[[i]]),rownames(data)))
+    if (n_genes>4){
+    scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[,i]))%>%.[1]
+    scoredf$Normalized=scale(scoredf[,1])
+    colnames(scoredf)=c(paste0(nm[i],"_singscore") , paste0(nm[i],"_Normalized_singscore" ))
+    if(nrow(scoredf)==ncol(data)) {
+      plist[[nm[i]]]=scoredf
+     }
+    }
+  }
+  }
+  return(plist)
+  #output=do.call("cbind",plist)
+}
+```
+
+
+```{r}
+Disease=data.frame(tumorType=c("Plexiform Neurofibroma","Cutaneous Neurofibroma", "Diffuse Infiltrating Neurofibroma" ,"Nodular Neurofibroma" ,"Malignant Peripheral Nerve Sheath Tumor"))%>%mutate(Disease=c("PN","cNF","DifNF","NodNF","MPNST"  ))
+Rawcounts=read.csv(file.path(file.path(COUNT_path,"51_JH_Tumor_raw_counts_for_paper.csv")),row.names = 1,check.names = F)
+# Protein_coding_counts=read.csv(file.path(Rawdata_path,"RNAseq","52_JH_Tumor_proteincoding_salmon_counts.csv"),row.names = 1,check.names = F)
+# RNAseq_anno=read.csv(file.path(Rawdata_path, "RNAseq","52_JH_Tumor_RNAseq_annotation.csv"))
+
+RNAseq_anno=read.csv(file.path(COUNT_path,"RNAseq_samplemap.csv"))%>%mutate(batch=ifelse(specimenID=="JH-2-023-91HBD","WU_batch2",batch))%>%mutate(Sample_name=Syn_speicimenID)%>%left_join(.,Disease)
+
+RNAseq_anno$batch=factor(RNAseq_anno$batch,c("JH_batch1" ,"WU_batch1","WU_batch2","WU_PDX_batch1","WU_PDX_batch2"))
+
+MPNST_PN_RNAseq_anno=RNAseq_anno%>%dplyr::filter(Disease%in%c("MPNST","PN"))
+
+Disease_sum=RNAseq_anno%>%group_by(tumorType)%>%summarise(n=n())
+```
+
+
+```{r}
+knitr::kable(Disease_sum,caption="Sample number for each disease in RNAseq data")%>%kableExtra::kable_styling()
+
+```
+
+
+
+# Batch effect removing
+
+## Raw count data has batch effect
+
+```{r,fig.cap="PCA plot for the raw data ",fig.width=6,fig.height=4}
+Tumor_count_log=log2(Rawcounts+1)
+
+PCA_Plot_3  (t(Tumor_count_log),RNAseq_anno,"Sample_name","batch")
+```
+
+
+
+```{r,fig.cap="Count plot for the raw data ",fig.width=6,fig.height=4}
+
+Batch_count_plot(Tumor_count_log,RNAseq_anno)
+
+```
+
+
+
+## Batch effect was removed after normalization
+ 
+```{r}
+
+batches = sapply(as.character(RNAseq_anno$batch), switch, "WU_PDX_batch1"=4,"WU_PDX_batch2"=5, "WU_batch1" = 2, "WU_batch2" = 3,"JH_batch1"=1,USE.NAMES = F)
+ 
+corrected_data = sva::ComBat(Tumor_count_log,batch =RNAseq_anno$batch,par.prior=T, mean.only = F)
+
+```
+
+
+```{r,fig.cap="PCA plot for the batch-removed gene count data (labelled by  batch) ", fig.width=6,fig.height=4}
+PCA_Plot_3  (t(corrected_data),RNAseq_anno,"Sample_name","batch")
+```
+
+
+```{r,fig.cap="PCA plot for the batch-removed gene count data (labelled by disease) ",fig.width=8,fig.height=4}
+PCA_Plot_3  (t(corrected_data),RNAseq_anno,"Sample_name","tumorType")
+```
+
+```{r,fig.cap="Bar plot for the batch-removed gene count data ",fig.width=8,fig.height=4, eval=T}
+Batch_count_plot(corrected_data,RNAseq_anno)
+```
+
+
+
+# Differential gene expression between MPNST and PN (using batch-removed data)
+
+
+```{r}
+# Deseq2 package for differential expressed genes analysis 
+# Normalized the count by VST from Deseq2 package
+GTAC_Sample_anno=RNAseq_anno %>%mutate(Group=Disease) 
+GTAC_Sample_anno$Group=factor(GTAC_Sample_anno$Group,levels=c("PN","cNF","DifNF","NodNF","MPNST"  ))
+rownames(GTAC_Sample_anno)=GTAC_Sample_anno$Sample_name
+colnames(corrected_data)==GTAC_Sample_anno$Sample_name
+corrected_data_counts=2^(corrected_data) %>%round(.,0)
+MPNST_vs_NF_Deseq=Deseq2_Deseq_function_2(corrected_data_counts,GTAC_Sample_anno)
+DESeq2::resultsNames(MPNST_vs_NF_Deseq)
+```
+
+
+```{r}
+#"Group_MPNST_vs_PN"
+MPNST_vs_PN_res <- DESeq2::results(MPNST_vs_NF_Deseq, name = "Group_MPNST_vs_PN", alpha = 0.05) %>%as.data.frame()
+MPNST_vs_PN_res_q005=MPNST_vs_PN_res %>%dplyr::filter(padj<0.05)
+MPNST_vs_PN_res_q005_up=MPNST_vs_PN_res_q005 %>%dplyr::filter(log2FoldChange>0)%>%arrange(desc(log2FoldChange))
+
+MPNST_vs_PN_res_q005_DN=MPNST_vs_PN_res_q005 %>%dplyr::filter(log2FoldChange<0)%>%arrange(log2FoldChange)
+#
+Expression_vst=Deseq_vst(corrected_data_counts,GTAC_Sample_anno)
+Expression_vst_anno=t(Expression_vst) %>%as.data.frame() %>%tibble::rownames_to_column (.,var="Sample_name" ) %>%left_join(.,GTAC_Sample_anno)%>% arrange(Group,Sample_name)
+rownames(Expression_vst_anno)=Expression_vst_anno$Sample_name
+```
+
+
+```{r}
+Expression_vst_anno_MPNST_PN=Expression_vst_anno%>%dplyr::filter(Sample_name%in%MPNST_PN_RNAseq_anno$Sample_name)
+Expression_vst_MPNST_PN=Expression_vst[,rownames(Expression_vst_anno_MPNST_PN)]
+MPNST_vs_PN_res_2=MPNST_vs_PN_res%>%mutate(gene_symbol=rownames(.))
+
+q005_gene=rownames(MPNST_vs_PN_res_q005)
+Expression_vst_anno_MPNST_PN_q005=Expression_vst_anno_MPNST_PN[,c("Sample_name",q005_gene)]
+Expression_vst_MPNST_PN_q005=Expression_vst_MPNST_PN[q005_gene,]
+
+
+```
+
+\newpage
+
+```{r}
+MPNST_PN_sample=MPNST_PN_RNAseq_anno [,c("Sample_name","individualID","tumorType","Disease")]
+knitr::kable(MPNST_PN_sample,caption = "PN and MPNST sample list")%>% kableExtra::kable_styling(latex_options = c("scale_down" ))
+```
+
+
+
+## Top 20 differential expressed genes
+
+```{r}
+
+Top20_up_genes=MPNST_vs_PN_res_q005%>%arrange(desc(log2FoldChange))%>%.[1:20,]
+Down20_up_genes=MPNST_vs_PN_res_q005%>%arrange(log2FoldChange)%>%.[1:20,]
+
+knitr::kable(Top20_up_genes[,c(2,5,6)],caption = "Top 20 Upregulated genes (MPNST vs PN) " ) %>%kableExtra::kable_styling()
+knitr::kable(Down20_up_genes[,c(2,5,6)],caption = "Top 20 Downregulated genes (MPNST vs PN) " ) %>%kableExtra::kable_styling(latex_options = c("hold_position"))
+
+```
+
+
+# GSEA analysis
+
+```{r}
+# 2947 genes from MPNST_vs_PN_res_q005 were used for GSEA analysis
+res_q005_rank=MPNST_vs_PN_res_q005%>%arrange(log2FoldChange) %>%.[c("log2FoldChange")]%>%as.data.frame() %>%tibble::rownames_to_column()
+GMT_files=list.files(Reference_path,pattern="all.v7.5.1.symbols.gmt.txt",full.names = T) # Donload from https://www.gsea-msigdb.org/gsea/index.jsp
+res_q005_rank=MPNST_vs_PN_res_q005%>%arrange(log2FoldChange) %>%.[c("log2FoldChange")]%>%as.data.frame() %>%tibble::rownames_to_column()
+ranks <- tibble::deframe(res_q005_rank)
+fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("all.v7.5.1.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=10,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+All_pathway_singscore=do.call("rbind", fgsea_list)%>%arrange(desc(NES))
+
+```
+
+\newpage
+
+```{r}
+All_pathway_singscore_q005=do.call("rbind", fgsea_list)%>%dplyr::filter(padj<0.05)
+
+Hallmark=All_pathway_singscore %>%dplyr::filter(grepl("HALLMARK",pathway )) %>%  arrange(padj)
+Hallmark_q005=Hallmark%>%dplyr::filter(padj<0.05)%>% arrange(desc(NES))
+
+knitr::kable(Hallmark_q005[,c(1,2,3,6)],caption="Hallmark pathways changed in MPNST groups (MPNST vs PN,padj<0.05)") %>%kableExtra::kable_styling(latex_options = c("hold_position"))
+
+```
+
+
+```{r}
+save(GTAC_Sample_anno,MPNST_vs_PN_res,Expression_vst,Expression_vst_anno ,  All_pathway_singscore,file=file.path(Process_data,"MPNST_VS_PN_Deseq2_outut.rdata"))
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
