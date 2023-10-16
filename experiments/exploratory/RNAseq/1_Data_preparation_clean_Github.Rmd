@@ -1,0 +1,170 @@
+---
+title: "RNAseq data download and process "
+author: ""
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: false
+    latex_engine: pdflatex
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+    #latex_engine: xelatex
+      
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo =F,message = F,warning = F)
+```
+
+```{r}
+rm(list=ls())
+#login information for the synapse
+Email=" " # Your email in synapse
+Pass=" " # Your password in synapse
+Path=getwd()
+COUNT_path=file.path(Path,"data" ,"Count")
+Unused_samples=c("JH-2-084")
+dir.create(COUNT_path,recursive = T)
+```
+
+```{r}
+# Function needed
+matrix.please<-function(x) {
+  m<-as.matrix(x[,-1])
+  rownames(m)<-x[,1]
+  m
+}
+```
+
+
+```{r}
+
+library(dplyr)  
+
+```
+
+
+```{r}
+if (file.exists(file.path(COUNT_path,"Protein_coding_genes.csv"))){
+  protein_coding_genes=read.csv(file.path(COUNT_path,"Protein_coding_genes.csv"))
+
+  
+} else{
+  require(biomaRt) 
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = 'www.ensembl.org')
+protein_coding_genes <- biomaRt::getBM(attributes = c("external_gene_name", "chromosome_name","description"), filters = c("biotype"),values= list(c("protein_coding")), mart = mart)
+write.csv(protein_coding_genes,file=file.path(COUNT_path,"Protein_coding_genes.csv")) }
+
+```
+
+```{r,eval=T}
+# No need to run if the data has been downloaded
+
+Count_files=list.files(COUNT_path,full.names = T,pattern = "gene_counts")
+if ( length(Count_files)!=6 ){
+ synapser::synLogin(email=Email,password=Pass)
+ ?synGet
+ # JH batch1 data
+
+ synapser::synGet(entity="syn52663091", downloadFile=T,downloadLocation=COUNT_path)#
+ # wu batch1 data
+ synapser::synGet(entity="syn51544799", downloadFile=T,downloadLocation=COUNT_path)
+ # WU_PDX_batch1 data
+ synapser::synGet(entity="syn51539337", downloadFile=T,downloadLocation=COUNT_path)
+ # WU_batch2
+ synapser::synGet(entity="syn51559031", downloadFile=T,downloadLocation=COUNT_path)
+ # 
+ synapser::synGet(entity="syn51539269", downloadFile=T,downloadLocation=COUNT_path)
+ # WU PDX batch2 
+ synapser::synGet(entity="syn49556298", downloadFile=T,downloadLocation=COUNT_path)
+
+}
+# annotation
+
+if (!file.exists(file.path(COUNT_path,"Simple_sample_map_10132023.xlsx"))){
+  synapser::synGet(entity="syn52663357", downloadFile=T,downloadLocation=COUNT_path)}
+
+```
+
+## remove JH-2-084, from batch2
+
+```{r}
+#remove cell line and xenograft samples
+dir(COUNT_path)
+
+Samplemap=readxl::read_excel(file.path(COUNT_path,"Simple_sample_map_10132023.xlsx"))%>%dplyr::filter(batch!="WU_batch3")%>%dplyr::filter(grepl("RNA",assay))%>%dplyr::filter(tissue!="xenograft passage")%>%dplyr::filter(tissue!="cell line")%>%dplyr::filter(!individualID%in%Unused_samples)
+
+```
+
+# Combine all count data
+
+
+```{r}
+Count_list=list()
+for (i in 1:length(Count_files)){
+
+  filename=Count_files[i]
+ Count_data=readr::read_tsv(filename)%>%dplyr::filter(gene_name%in%protein_coding_genes$external_gene_name)%>%dplyr::select(-gene_id)
+  if (ncol(Count_data)>2){
+     Count_list[[i]]=Count_data%>%group_by(gene_name)%>%summarise_all(mean)%>%as.data.frame()%>%matrix.please()} else{
+  Count_list[[i]]=Count_data%>%group_by(gene_name)%>%summarise_all(mean)%>%as.data.frame()%>%matrix.please()%>%as.data.frame()%>%setNames(colnames(Count_data)[2])
+  
+}
+
+
+}
+```
+
+```{r}
+# gene number is diffenect among batches?
+for( i in 1:length(Count_list)){
+  
+  print(nrow(Count_list[[i]]))
+
+}
+
+```
+
+```{r}
+# list missing gene names in JH_batch1_salmon.merged.gene_counts.tsv and salmon.merged.gene_counts-newID-syn21984813.tsv
+setdiff(rownames(Count_list[[2]]),rownames(Count_list[[1]]))
+```
+
+
+```{r}
+# Merge data by using common row names 
+Count_data=do.call(cbind,Count_list[c(2:5)])%>%.[rownames(Count_list[[6]]),]
+Count_data2=do.call(cbind,Count_list[c(1,6)])
+Count_data2=cbind(Count_data,Count_data2)
+# Remove WU and MN samples from data; 
+Count_data2_clean=Count_data2%>%.[,(grepl("JH",colnames(.)))]
+colnames(Count_data2_clean)=gsub("\\.","-",colnames(Count_data2_clean))
+
+```
+
+
+```{r}
+Count_sample_name=data.frame(Syn_speicimenID=colnames(Count_data2_clean))%>%
+  mutate(specimenID=substr(Syn_speicimenID,1,14),aliquotID=substr(Syn_speicimenID,16,21))
+RNA_Samplemap=Samplemap%>%mutate(Syn_speicimenID= paste(specimenID,aliquotID,sep="-")) %>%dplyr::filter(Syn_speicimenID%in%Count_sample_name$Syn_speicimenID)
+
+Count_data_clean2=Count_data2_clean%>%as.data.frame()%>%.[,RNA_Samplemap$Syn_speicimenID]
+
+```
+
+
+```{r}
+write.csv(Count_data_clean2,file=file.path(COUNT_path,"51_JH_Tumor_raw_counts_for_paper.csv"))
+write.csv(RNA_Samplemap,file=file.path(COUNT_path,"RNAseq_samplemap.csv"))
+
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+ 
+
