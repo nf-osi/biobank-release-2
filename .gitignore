@@ -4,3 +4,5 @@
 .RData
 .Ruserdata
 ./data/raw_data/
+file\.path\(Path,"data","Count"\)
+file\.path\(Patn,"Reference"\)
