@@ -10,7 +10,7 @@ library(synapser)
 ##################################################
 # get data from Synapse
 synLogin()
-exome_to_rna <- synGet("syn52578817")$path
+exome_to_rna <- read.table(synGet("syn52913687")$path)
 colnames(exome_to_rna) <- c("sample_a", "sample_b","relatedness", "ibs2", "hom_concordance", "paired", "source_a", "assay_a", "source_b", "assay_b","comparison_type")
 
 # make relatedness scatter plot
@@ -33,16 +33,16 @@ dev.off()
 
 ##################################################
 # get relatedness matrix and row/column annotation data
-matrix_rna_to_wes <- synGet("syn52578817")$path
+matrix_rna_to_wes <- read.table(synGet("syn52913709")$path, header = T)
 rownames(matrix_rna_to_wes) <- matrix_rna_to_wes[,1]
 matrix_rna_to_wes <- matrix_rna_to_wes[,-1]
 
-row_annot <- synGet("syn52578818")$path
+row_annot <- read.table(synGet("syn52578818")$path)
 rownames(row_annot) <- row_annot[,1]
 row_annot <-row_annot[,-1]
 colnames(row_annot) <- c("SampleType", "Assay")
 
-col_annot <- synGet("syn52578822")$path
+col_annot <- read.table(synGet("syn52578822")$path)
 rownames(col_annot) <- col_annot[,1]
 col_annot <-col_annot[,-1]
 colnames(col_annot) <- c("SampleType", "Assay")
