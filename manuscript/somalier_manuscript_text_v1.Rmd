@@ -1,0 +1,81 @@
+---
+title: "Evaluating relatedness between WES and RNA-seq samples"
+author: "Sasha Scott"
+date: "2023-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(ggplot2)
+library(pheatmap)
+library(synapser)
+```
+
+
+Methods
+
+We used somalier (v0.2.17) to evaluate the relatedness between WES and RNA-seq samples by using the extract function to identify informative sites from the WES and RNA-seq VCF files and then using the relate function to calculate statistics on the number of shared genotypes and the coefficient of relatedness between all samples. We considered samples with a relatedness coefficient ≥0.9 to be from the same individual. The pheatmap R package (v1.0.01) was used to generate heatmaps of the relatedness between all WES and RNA-seq samples and the ggplot2 package was used to generate scatter plots.
+
+Results
+
+We used somalier to evaluate relatedness between WES and RNA-seq samples. We confirmed that all samples from different individuals were unrelated (relatedness coefficient <0.9). Three samples had lower than expected relatedness to other samples from the same individual (Figure 1). This was expected in two samples as JH-2-002-GAF53-2E57B is an RNA-seq sample of a patient-derived cell line and JH-2-002-GAF53-3BAGC is an RNA-seq sample of a xenograft passage. We also found that JH-2-009-2578C-9FG16, a primary tumor RNA-seq sample, had low relatedness coefficients to all other samples from the same individual. This sample had low sequencing depth with overrepresented sequences in chr14 and chr21 and should be removed from further analyses. All other samples had high relatedness (≥0.9) to samples labeled as derived from the same individual and low relatedness (<0.9) to samples labeled as derived from different individuals.
+
+1.	Pedersen, B.S. et al. Somalier: rapid relatedness estimation for cancer and germline studies using efficient genome sketches. Genome Med. 12, 62 (2020). PMID: 32664994.
+
+Figure 1. Relatedness between WES and RNA-seq samples. Note that only RNA-seq data is available two individuals, JH-2-003 and JH-2-007, so they are not included in these plots as they do not have WES data as a point of comparision.
+a) A scatter plot of the relatedness coefficient vs. the number of sites with the same genotype between two samples, as calculated by somalier. Comparisons between two samples annotated as being from the same individual are shown in red and those from different individuals are colored blue. The shape of the point indicates the tissue of origin of the compared samples.The vertical line indicates the cutoff value (≥0.9) used to determine whether two samples are from the same individual based on the relatedness coefficient.
+b) A heatmap of the relatedness coefficient between all compared samples. Samples generally show high relatedness to other samples from the same individual and lower relatedness to somples from different individuals.
+
+```{r mixed_plot, echo=FALSE}
+
+# get data from Synapse
+synLogin()
+exome_to_rna <- read.table(synGet("syn52913687")$path)
+colnames(exome_to_rna) <- c("sample_a", "sample_b","relatedness", "ibs2", "hom_concordance", "paired", "source_a", "assay_a", "source_b", "assay_b","comparison_type")
+
+# make relatedness scatter plot
+mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shape=comparison_type)) + 
+  geom_point(alpha=0.5, size=2) + 
+  scale_color_manual(values = c("yes" = "#c9182c", "no" = "#0D3B66"), name = "Same Individual") +
+  scale_shape_manual(values = c("cell_line" = 9, "tumor" = 16, "xenograft" = 3, "normal"=15, "tumor/normal"=17), labels = c("cell line/tumor or normal", "tumor/tumor", "tumor/normal", "xenograft/tumor or normal"), name = "Compared Tissues") +
+  theme_bw() +
+  xlim(c(-2.5,1)) +
+  xlab("Relatedness Coefficient") +
+  ylab("Number of sites with same genotype") +
+  ggtitle("Relatedness between WES and RNA-seq samples") +
+  geom_vline(xintercept = 0.9, linetype = "dashed")
+
+plot(mixed_plot)
+```
+
+```{r rna_to_wes_heatmap, echo=FALSE}
+
+# get data from Synapse
+matrix_rna_to_wes <- read.table(synGet("syn52913709")$path, header = T)
+rownames(matrix_rna_to_wes) <- matrix_rna_to_wes[,1]
+matrix_rna_to_wes <- matrix_rna_to_wes[,-1]
+
+row_annot <- read.table(synGet("syn52578818")$path)
+rownames(row_annot) <- row_annot[,1]
+row_annot <-row_annot[,-1]
+colnames(row_annot) <- c("SampleType", "Assay")
+
+col_annot <- read.table(synGet("syn52578822")$path)
+rownames(col_annot) <- col_annot[,1]
+col_annot <-col_annot[,-1]
+colnames(col_annot) <- c("SampleType", "Assay")
+
+
+# make relatedness heatmap
+ann_colors = list(SampleType = c(cell_line="#61C9A8",normal_tissue="#0D3B66", primary_tumor="#7E52A0", recurrent_tumor="#F4D35E", blood="#ab3428", xenograft_passage="#f49e4c"),
+                  Assay = c(Whole_Exome_Sequencing="#2d728f", Bulk_RNA_sequencing="#ff5d8f"))
+
+pheatmap(matrix_rna_to_wes,
+         cluster_rows = F,
+         cluster_cols = F,
+         annotation_row = row_annot,
+         annotation_col = col_annot,
+         annotation_colors = ann_colors)
+
+```
