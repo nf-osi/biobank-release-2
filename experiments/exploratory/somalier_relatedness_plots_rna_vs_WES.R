@@ -26,8 +26,8 @@ mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shap
   geom_vline(xintercept = 0.9, linetype = "dashed")
 
 # save plot as PDF file
-pdf("rna_to_wes.relatedness_scatter_plots.cutoff_0.9.pdf", height = 8, width = 14)
-plot_grid(rna_plot, exome_plot, mixed_plot, ncol = 2, nrow = 2)
+pdf("rna_to_wes.relatedness_scatter_plot.cutoff_0.9.pdf", height = 4, width = 7)
+mixed_plot
 dev.off()
 
 
