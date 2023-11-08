@@ -1,7 +1,5 @@
 #!/usr/bin/env Rscript
-library(tidyverse)
 library(ggplot2)
-library(cowplot)
 library(pheatmap)
 library(synapser)
 
