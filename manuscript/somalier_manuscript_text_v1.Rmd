@@ -17,7 +17,7 @@ library(synapser)
 
 We used somalier (v0.2.17) to evaluate the relatedness between WES and RNA-seq samples by using the extract function to identify informative sites from the WES and RNA-seq VCF files and then using the relate function to calculate statistics on the number of shared genotypes and the coefficient of relatedness between all samples. We considered samples with a relatedness coefficient ≥0.9 to be from the same individual. The pheatmap R package (v1.0.01) was used to generate heatmaps of the relatedness between all WES and RNA-seq samples and the ggplot2 package was used to generate scatter plots.
 
-Results
+### Results
 
 We used somalier to evaluate relatedness between WES and RNA-seq samples. We confirmed that all samples from different individuals were unrelated (relatedness coefficient <0.9). Three samples had lower than expected relatedness to other samples from the same individual (Figure 1). This was expected in two samples as JH-2-002-GAF53-2E57B is an RNA-seq sample of a patient-derived cell line and JH-2-002-GAF53-3BAGC is an RNA-seq sample of a xenograft passage. We also found that JH-2-009-2578C-9FG16, a primary tumor RNA-seq sample, had low relatedness coefficients to all other samples from the same individual. This sample had low sequencing depth with overrepresented sequences in chr14 and chr21 and should be removed from further analyses. All other samples had high relatedness (≥0.9) to samples labeled as derived from the same individual and low relatedness (<0.9) to samples labeled as derived from different individuals.
 
