@@ -13,7 +13,7 @@ library(synapser)
 ```
 
 
-Methods
+### Methods
 
 We used somalier (v0.2.17) to evaluate the relatedness between WES and RNA-seq samples by using the extract function to identify informative sites from the WES and RNA-seq VCF files and then using the relate function to calculate statistics on the number of shared genotypes and the coefficient of relatedness between all samples. We considered samples with a relatedness coefficient ≥0.9 to be from the same individual. The pheatmap R package (v1.0.01) was used to generate heatmaps of the relatedness between all WES and RNA-seq samples and the ggplot2 package was used to generate scatter plots.
 
