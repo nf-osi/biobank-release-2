@@ -47,7 +47,8 @@ zjoin -a somalier_relatedness.txt -b biobank_info.txt -1 1 -2 1 \
 	| cut -f 1-8,10- \
 	| awk '($8~/RNA/ && $10~/Exome/) || ($8~/Exome/ && $10~/RNA/)' \
 	| awk '{OFS="\t"; if($7=="cell_line" || $9=="cell_line"){print $0,"cell_line"} else if($7=="xenograft_passage" || $9=="xenograft_passage"){print $0,"xenograft"} else if($7=="blood" || $9=="blood"){print $0,"tumor/normal"} else{print $0,"tumor"} }' \
-	> somalier_relatedness.rna_to_WES.comparison_type.tsv```
+	> somalier_relatedness.rna_to_WES.comparison_type.tsv
+```
 
 ```{r mixed_plot, echo=FALSE}
 
