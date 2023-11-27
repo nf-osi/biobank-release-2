@@ -92,12 +92,12 @@ matrix_rna_to_wes <- read.table(synGet("syn52913709")$path, header = T)
 rownames(matrix_rna_to_wes) <- matrix_rna_to_wes[,1]
 matrix_rna_to_wes <- matrix_rna_to_wes[,-1]
 
-row_annot <- read.table(synGet("syn52578818")$path)
+row_annot <- read.table(synGet("syn52578818")$path) # This file was generated from Simple_sample_map.csv
 rownames(row_annot) <- row_annot[,1]
 row_annot <-row_annot[,-1]
 colnames(row_annot) <- c("SampleType", "Assay")
 
-col_annot <- read.table(synGet("syn52578822")$path)
+col_annot <- read.table(synGet("syn52578822")$path) # This file was generated from Simple_sample_map.csv
 rownames(col_annot) <- col_annot[,1]
 col_annot <-col_annot[,-1]
 colnames(col_annot) <- c("SampleType", "Assay")
