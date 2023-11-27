@@ -72,6 +72,19 @@ mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shap
 plot(mixed_plot)
 ```
 
+```{bash matrix_rna_to_wes}
+# Convert relatedness statistics from tabular to matrix format
+cut -f 1-3 somalier_relatedness.rna_to_WES.comparison_type.tsv > rna_to_WES.txt
+python make_matrix_rna_vs_WES.py -i rna_to_WES.txt | awk '!/^[[:space:]]*$/' | sort -k1,1 | awk -F "\t" '{OFS="\t"; if(NR==1){$1="sample"; print} else{print}}' > relatedness_matrix.rna_to_WES.txt
+# re-order matrix to have all individuals together, and all WES and RNA-seq sampels together within individual's sample cluster. Using biobank info file generated in Bash code block above.
+zjoin -a ../biobank_info.txt -b relatedness_matrix.rna_to_WES.txt -1 1 -2 1 \
+	| awk '{OFS="\t"; split($1,a,"-"); print a[3],$0}' \
+	| sort -k1,1 -k4,4 \
+	| cut -f 5- \
+	| cat <(head -n 1 relatedness_matrix.rna_to_WES.txt) - \
+	> relatedness_matrix.rna_to_WES.ordered.txt
+```
+
 ```{r rna_to_wes_heatmap, echo=FALSE}
 
 # get data from Synapse
