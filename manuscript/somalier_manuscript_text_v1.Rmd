@@ -31,6 +31,24 @@ Figure 1. Relatedness between WES and RNA-seq samples. Note that only RNA-seq da
 a) A scatter plot of the relatedness coefficient vs. the number of sites with the same genotype between two samples, as calculated by somalier. Comparisons between two samples annotated as being from the same individual are shown in red and those from different individuals are colored blue. The shape of the point indicates the tissue of origin of the compared samples.The vertical line indicates the cutoff value (≥0.9) used to determine whether two samples are from the same individual based on the relatedness coefficient.
 b) A heatmap of the relatedness coefficient between all compared samples. Samples generally show high relatedness to other samples from the same individual and lower relatedness to somples from different individuals.
 
+```{bash exome-to-rna-samples}
+# Extract needed statistics from somalier output (somalier.pairs.tsv) and determined if samples come from same individual
+cut -f 1-3,5-6 somalier.pairs.tsv \
+	| awk '{OFS="\t"; if($1=="sample_a"){print $0,"paired"} else{split($1,a,"-"); split($2,b,"-"); if(a[3]==b[3]){print $0,"yes"} else{print $0,"no"}}}' \
+	> somalier_relatedness.txt
+
+# Extract relevant information from sample map
+awk -F "\t" '{OFS="\t"; print $12"-"$13,$5,$15}' Biobank-samples-map-clinical-051223.txt | tr " " "_" > biobank_info.txt
+
+# Combine somalier statistics and sample map information, keep only RNA to WES comparisons, and add column with type of tissues compared. The generated file is used to create the relatedness scatter plot.
+zjoin -a somalier_relatedness.txt -b biobank_info.txt -1 1 -2 1 \
+	| cut -f 1-6,8- \
+	| zjoin -a stdin -b biobank_info.txt -1 2 -2 1 \
+	| cut -f 1-8,10- \
+	| awk '($8~/RNA/ && $10~/Exome/) || ($8~/Exome/ && $10~/RNA/)' \
+	| awk '{OFS="\t"; if($7=="cell_line" || $9=="cell_line"){print $0,"cell_line"} else if($7=="xenograft_passage" || $9=="xenograft_passage"){print $0,"xenograft"} else if($7=="blood" || $9=="blood"){print $0,"tumor/normal"} else{print $0,"tumor"} }' \
+	> somalier_relatedness.rna_to_WES.comparison_type.tsv```
+
 ```{r mixed_plot, echo=FALSE}
 
 # get data from Synapse
