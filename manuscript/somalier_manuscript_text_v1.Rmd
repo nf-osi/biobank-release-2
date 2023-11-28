@@ -41,6 +41,7 @@ cut -f 1-3,5-6 somalier.pairs.tsv \
 awk -F "\t" '{OFS="\t"; print $12"-"$13,$5,$15}' Biobank-samples-map-clinical-051223.txt | tr " " "_" > biobank_info.txt
 
 # Combine somalier statistics and sample map information, keep only RNA to WES comparisons, and add column with type of tissues compared. The generated file is used to create the relatedness scatter plot.
+# zjoin is written by Colby Chiang and can be found here: https://github.com/cc2qe/ion/blob/master/zjoin
 zjoin -a somalier_relatedness.txt -b biobank_info.txt -1 1 -2 1 \
 	| cut -f 1-6,8- \
 	| zjoin -a stdin -b biobank_info.txt -1 2 -2 1 \
