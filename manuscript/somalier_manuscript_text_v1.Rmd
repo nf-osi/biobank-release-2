@@ -1,0 +1,118 @@
+---
+title: "Evaluating relatedness between WES and RNA-seq samples"
+author: "Sasha Scott"
+date: "2023-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(ggplot2)
+library(pheatmap)
+library(synapser)
+```
+
+
+### Methods
+
+We used somalier (v0.2.17) to evaluate the relatedness between WES and RNA-seq samples by using the _extract_ function to identify informative sites from the WES and RNA-seq VCF files and then using the _relate_ function to calculate statistics on the number of shared genotypes and the coefficient of relatedness between all samples. The pheatmap R package (v1.0.01) was used to generate heatmaps of the relatedness between all WES and RNA-seq samples and the ggplot2 package was used to generate scatter plots.
+
+### Results
+
+To explore and describe the samples further we used somalier to evaluate relatedness between WES and RNA-seq samples from each individual biobank patient. We found that all samples that originated from different individuals had a relatedness coefficient <0.9. Based on this and the clinical annotations of the samples, we set a threshold of relatedness coefficient ≥0.9 to be a confirmation that the WES and RNAseq samples were indeed from the same individual. 
+
+With this threshold in place, we found that three RNA-seq samples that originated from the sample individual had lower than expected relatedness to other samples from that individual (Figure 1). On examination of the clinical annotations, we found that JH-2-002-GAF53-2E57B is an RNA-seq sample of a patient-derived cell line, and JH-2-002-GAF53-3BAGC is an RNA-seq sample of a xenograft developed from the tumor sample. This suggested that our determined threshold of relatedness coefficient was sensitive enough to detect differences between primary samples and cell lines and xenografts.
+
+Among the other samples, we found that JH-2-009-2578C-9FG16, a primary tumor RNA-seq sample, had lower that expected relatedness coefficient to all other samples from the same individual. On closer examination we found that this sample had low sequencing depth with overrepresented sequences in chr14 and chr21.  While this sample has been included in the descriptive analyses presented in this paper, we would like to surface this difference so that users of this sample and corresponding data can decide to remove this sample from further analyses at their discretion. 
+
+1.	Pedersen, B.S. et al. Somalier: rapid relatedness estimation for cancer and germline studies using efficient genome sketches. Genome Med. 12, 62 (2020). PMID: 32664994.
+
+Figure 1. Relatedness between WES and RNA-seq samples. Note that only RNA-seq data is available two individuals, JH-2-003 and JH-2-007, so they are not included in these plots as they do not have WES data as a point of comparision.
+a) A scatter plot of the relatedness coefficient vs. the number of sites with the same genotype between two samples, as calculated by somalier. Comparisons between two samples annotated as being from the same individual are shown in red and those from different individuals are colored blue. The shape of the point indicates the tissue of origin of the compared samples.The vertical line indicates the cutoff value (≥0.9) used to determine whether two samples are from the same individual based on the relatedness coefficient.
+b) A heatmap of the relatedness coefficient between all compared samples. Samples generally show high relatedness to other samples from the same individual and lower relatedness to somples from different individuals.
+
+```{bash exome-to-rna-samples}
+# Extract needed statistics from somalier output (somalier.pairs.tsv) and determined if samples come from same individual
+cut -f 1-3,5-6 somalier.pairs.tsv \
+	| awk '{OFS="\t"; if($1=="sample_a"){print $0,"paired"} else{split($1,a,"-"); split($2,b,"-"); if(a[3]==b[3]){print $0,"yes"} else{print $0,"no"}}}' \
+	> somalier_relatedness.txt
+
+# Extract relevant information from sample map
+awk -F "\t" '{OFS="\t"; print $12"-"$13,$5,$15}' Biobank-samples-map-clinical-051223.txt | tr " " "_" > biobank_info.txt
+
+# Combine somalier statistics and sample map information, keep only RNA to WES comparisons, and add column with type of tissues compared. The generated file is used to create the relatedness scatter plot.
+# zjoin is written by Colby Chiang and can be found here: https://github.com/cc2qe/ion/blob/master/zjoin
+zjoin -a somalier_relatedness.txt -b biobank_info.txt -1 1 -2 1 \
+	| cut -f 1-6,8- \
+	| zjoin -a stdin -b biobank_info.txt -1 2 -2 1 \
+	| cut -f 1-8,10- \
+	| awk '($8~/RNA/ && $10~/Exome/) || ($8~/Exome/ && $10~/RNA/)' \
+	| awk '{OFS="\t"; if($7=="cell_line" || $9=="cell_line"){print $0,"cell_line"} else if($7=="xenograft_passage" || $9=="xenograft_passage"){print $0,"xenograft"} else if($7=="blood" || $9=="blood"){print $0,"tumor/normal"} else{print $0,"tumor"} }' \
+	> somalier_relatedness.rna_to_WES.comparison_type.tsv
+```
+
+```{r mixed_plot, echo=FALSE}
+
+# get data from Synapse
+synLogin()
+exome_to_rna <- read.table(synGet("syn52913687")$path)
+colnames(exome_to_rna) <- c("sample_a", "sample_b","relatedness", "ibs2", "hom_concordance", "paired", "source_a", "assay_a", "source_b", "assay_b","comparison_type")
+
+# make relatedness scatter plot
+mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shape=comparison_type)) + 
+  geom_point(alpha=0.5, size=2) + 
+  scale_color_manual(values = c("yes" = "#c9182c", "no" = "#0D3B66"), name = "Same Individual") +
+  scale_shape_manual(values = c("cell_line" = 9, "tumor" = 16, "xenograft" = 3, "normal"=15, "tumor/normal"=17), labels = c("cell line/tumor or normal", "tumor/tumor", "tumor/normal", "xenograft/tumor or normal"), name = "Compared Tissues") +
+  theme_bw() +
+  xlim(c(-2.5,1)) +
+  xlab("Relatedness Coefficient") +
+  ylab("Number of sites with same genotype") +
+  ggtitle("Relatedness between WES and RNA-seq samples") +
+  geom_vline(xintercept = 0.9, linetype = "dashed")
+
+plot(mixed_plot)
+```
+
+```{bash matrix_rna_to_wes}
+# Convert relatedness statistics from tabular to matrix format
+cut -f 1-3 somalier_relatedness.rna_to_WES.comparison_type.tsv > rna_to_WES.txt
+python make_matrix_rna_vs_WES.py -i rna_to_WES.txt | awk '!/^[[:space:]]*$/' | sort -k1,1 | awk -F "\t" '{OFS="\t"; if(NR==1){$1="sample"; print} else{print}}' > relatedness_matrix.rna_to_WES.txt
+# re-order matrix to have all individuals together, and all WES and RNA-seq sampels together within individual's sample cluster. Using biobank info file generated in Bash code block above.
+zjoin -a ../biobank_info.txt -b relatedness_matrix.rna_to_WES.txt -1 1 -2 1 \
+	| awk '{OFS="\t"; split($1,a,"-"); print a[3],$0}' \
+	| sort -k1,1 -k4,4 \
+	| cut -f 5- \
+	| cat <(head -n 1 relatedness_matrix.rna_to_WES.txt) - \
+	> relatedness_matrix.rna_to_WES.ordered.txt
+```
+
+```{r rna_to_wes_heatmap, echo=FALSE}
+
+# get data from Synapse
+matrix_rna_to_wes <- read.table(synGet("syn52913709")$path, header = T)
+rownames(matrix_rna_to_wes) <- matrix_rna_to_wes[,1]
+matrix_rna_to_wes <- matrix_rna_to_wes[,-1]
+
+row_annot <- read.table(synGet("syn52578818")$path) # This file was generated from Simple_sample_map.csv
+rownames(row_annot) <- row_annot[,1]
+row_annot <-row_annot[,-1]
+colnames(row_annot) <- c("SampleType", "Assay")
+
+col_annot <- read.table(synGet("syn52578822")$path) # This file was generated from Simple_sample_map.csv
+rownames(col_annot) <- col_annot[,1]
+col_annot <-col_annot[,-1]
+colnames(col_annot) <- c("SampleType", "Assay")
+
+
+# make relatedness heatmap
+ann_colors = list(SampleType = c(cell_line="#61C9A8",normal_tissue="#0D3B66", primary_tumor="#7E52A0", recurrent_tumor="#F4D35E", blood="#ab3428", xenograft_passage="#f49e4c"),
+                  Assay = c(Whole_Exome_Sequencing="#2d728f", Bulk_RNA_sequencing="#ff5d8f"))
+
+pheatmap(matrix_rna_to_wes,
+         cluster_rows = F,
+         cluster_cols = F,
+         annotation_row = row_annot,
+         annotation_col = col_annot,
+         annotation_colors = ann_colors)
+
+```
