@@ -1,0 +1,119 @@
+---
+title: "colors_for_figures"
+author:
+  name: Jineta Banerjee
+  affiliation: Sage Bionetworks
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+    number_sections: yes
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib_synapser, echo=FALSE, eval=TRUE, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+
+library(synapser)
+library(synapserutils)
+
+library(tidyverse)
+library(glue)
+library(readxl)
+
+#library(reticulate)
+
+```
+
+This file contains code to map colors to clinical metadata to help harmonize all figures.
+
+## Download clinical metadata file from Synapse
+
+```{r clindata, eval=TRUE, echo=TRUE, results='hide', message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+
+## The login credentials have been stored in .synapseConfig file in the home dir. If you dont have this setup, please make the file before trying to login.
+synLogin()
+
+# Get the current working directory
+wd <- getwd()
+
+# Construct the path to the 'data' directory located two levels up
+datapath <- file.path(wd, "../..", "data")
+datapath <- normalizePath(datapath, winslash = "/", mustWork = FALSE)
+
+
+# DOWNLOAD CLINICAL METADATA (uncomment next line to download file)
+synapser::synGet("syn52798607", downloadLocation = datapath)
+
+
+# READ IN OFFLINE SAMPLESHEET
+jhu_clinicaldata_1 <- readxl::read_xlsx(glue::glue(datapath,"/Biobank-samples-map-clinical-102523.xlsx")) %>% 
+  dplyr::filter(assay == "Whole Exome Sequencing") %>%  #select WES samples
+  dplyr::filter(batch != "WU_batch3") %>%  # select only batch1, 2, 3 samples
+  dplyr::filter(tissue == "primary tumor") %>%  # select only tumor samples
+  dplyr::mutate(Aliquot_ID_Synapse_NEW = replace_na(Aliquot_ID_Synapse_NEW, "A")) %>% 
+  dplyr::mutate(Tumor_Sample_Barcode = stringr::str_c(SpecimenID_Synapse_NEW, "-", Aliquot_ID_Synapse_NEW)) %>% 
+  dplyr::mutate(
+    # Create categories
+    age_group = dplyr::case_when(
+      age <= 10            ~ "0-10",
+      age > 10 & age <= 20 ~ "11-20",
+      age > 20 & age <= 30 ~ "21-30",
+      age > 30 & age <= 40 ~ "31-40",
+      age > 40 & age <= 50 ~ "41-50",
+      age > 50             ~ "> 50"
+    ),
+    # Convert to factor
+    age_group = factor(
+      age_group,
+      level = c("0-10", "11-20","21-30", "31-40", "41-50", "> 50")
+    )
+  ) %>% 
+  dplyr::select(tumorType, sex, age_group, location, tissue, individualID, Tumor_Sample_Barcode, NF1_loss_clinical_sequencing, NF1_loss_clinical_diagnosis) %>% 
+  dplyr::filter(!(Tumor_Sample_Barcode %in% c("JH-2-015-6AD96-A", "JH-2-106-B73E8-A", "JH-2-106-1447G-A", "JH-2-084-F9A84-A", "JH-2-084-AE169-A"))) %>% #remove 2-015TD, JH-2-106, JH-2-084 
+  purrr::set_names(nm = c(
+    "tumorType", 
+    "sex", 
+    "age_group", 
+    "location", 
+    "tissue", 
+    "individualID", 
+    "Tumor_Sample_Barcode", 
+    "NF1_clinical_sequencing", 
+    "NF1_clinical_diagnosis"
+  ))
+
+```
+
+## Assign colors to the metadata for plotting 
+
+```{r colors, echo=TRUE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+tumortype_colors <- c("#0D3B66", "#2d728f","#ab3428","#61C9A8","#7E52A0", "#F4D35E","#f49e4c")
+names(tumortype_colors) <- jhu_clinicaldata_1$tumorType %>% unique()
+
+sex_colors <- c("#C49991", "#279AF1")
+names(sex_colors) <- jhu_clinicaldata_1$sex %>% unique()
+
+age_colors <- c("#F7F7FF","#caf0f8", "#48cae4", "#0077b6", "#023e8a", "#03045e")
+names(age_colors) <- jhu_clinicaldata_1$age_group %>% unique()
+
+nf1_genetic_testing <- c("#f6e7cb", "#38b000")
+names(nf1_genetic_testing) <- jhu_clinicaldata_1$NF1_clinical_sequencing %>% unique()
+
+nf1_diagnosis <- c("#99e2b4", "#dde7c7")
+names(nf1_diagnosis) <- jhu_clinicaldata_1$NF1_clinical_diagnosis %>% unique()
+
+annotation_colors <- list(tumorType = tumortype_colors, sex = sex_colors, age_group = age_colors, NF1_clinical_sequencing = nf1_genetic_testing, NF1_clinical_diagnosis = nf1_diagnosis)
+
+```
+
