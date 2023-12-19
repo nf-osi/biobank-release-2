@@ -58,11 +58,16 @@ synLogin()
 exome_to_rna <- read.table(synGet("syn52913687")$path)
 colnames(exome_to_rna) <- c("sample_a", "sample_b","relatedness", "ibs2", "hom_concordance", "paired", "source_a", "assay_a", "source_b", "assay_b","comparison_type")
 
+# remove samples 2-084 and 2-106 that were eliminated from analyses
+exome_to_rna <- exome_to_rna[-grep("JH-2-084",exome_to_rna$sample_a),]
+exome_to_rna <- exome_to_rna[-grep("JH-2-084",exome_to_rna$sample_b),]
+exome_to_rna <- exome_to_rna[-grep("JH-2-106",exome_to_rna$sample_b),]
+
 # make relatedness scatter plot
 mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shape=comparison_type)) + 
   geom_point(alpha=0.5, size=2) + 
-  scale_color_manual(values = c("yes" = "#c9182c", "no" = "#0D3B66"), name = "Same Individual") +
-  scale_shape_manual(values = c("cell_line" = 9, "tumor" = 16, "xenograft" = 3, "normal"=15, "tumor/normal"=17), labels = c("cell line/tumor or normal", "tumor/tumor", "tumor/normal", "xenograft/tumor or normal"), name = "Compared Tissues") +
+  scale_color_manual(values = c("yes" = "#c9182c", "no" = "#0D3B66"), name = "Same Individual", guide = guide_legend(override.aes = list(alpha=1))) +
+  scale_shape_manual(values = c("cell_line" = 9, "tumor" = 16, "xenograft" = 3, "normal"=15, "tumor/normal"=17), labels = c("cell line/tumor or normal", "tumor/tumor", "tumor/normal", "xenograft/tumor or normal"), name = "Compared Tissues", guide = guide_legend(override.aes = list(alpha=1))) +
   theme_bw() +
   xlim(c(-2.5,1)) +
   xlab("Relatedness Coefficient") +
@@ -92,20 +97,21 @@ zjoin -a ../biobank_info.txt -b relatedness_matrix.rna_to_WES.txt -1 1 -2 1 \
 matrix_rna_to_wes <- read.table(synGet("syn52913709")$path, header = T)
 rownames(matrix_rna_to_wes) <- matrix_rna_to_wes[,1]
 matrix_rna_to_wes <- matrix_rna_to_wes[,-1]
+colnames(matrix_rna_to_wes) <- gsub("\\.","-",colnames(matrix_rna_to_wes))
 
-row_annot <- read.table(synGet("syn52578818")$path) # This file was generated from Simple_sample_map.csv
+row_annot <- read.table(synGet("syn52578818")$path)
 rownames(row_annot) <- row_annot[,1]
 row_annot <-row_annot[,-1]
 colnames(row_annot) <- c("SampleType", "Assay")
 
-col_annot <- read.table(synGet("syn52578822")$path) # This file was generated from Simple_sample_map.csv
+col_annot <- read.table(synGet("syn52578822")$path)
 rownames(col_annot) <- col_annot[,1]
 col_annot <-col_annot[,-1]
 colnames(col_annot) <- c("SampleType", "Assay")
 
 
 # make relatedness heatmap
-ann_colors = list(SampleType = c(cell_line="#61C9A8",normal_tissue="#0D3B66", primary_tumor="#7E52A0", recurrent_tumor="#F4D35E", blood="#ab3428", xenograft_passage="#f49e4c"),
+ann_colors = list(SampleType = c(cell_line="#61C9A8",normal="#ab3428", primary_tumor="#7E52A0", recurrent_tumor="#F4D35E", xenograft_passage="#f49e4c"),
                   Assay = c(Whole_Exome_Sequencing="#2d728f", Bulk_RNA_sequencing="#ff5d8f"))
 
 pheatmap(matrix_rna_to_wes,
