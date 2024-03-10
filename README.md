@@ -1,10 +1,7 @@
 # JHU Biobank Data Release Phase 2 
 
 ## Overview
-This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release.
-
-
-### :warning: NOTE: Always start a **pull request** against the `dev` branch and tag repository members for review. DO NOT COMMIT CODE DIRECTLY INTO DEV branch.
+This repository contains code for the analysis of JHU NF1 Biorepository data for the 2nd data release. The main analyses scripts can be found in the `exploratory` and `manuscript` directories.
 
 ## Layout
 
