@@ -2,6 +2,7 @@
 library(ggplot2)
 library(pheatmap)
 library(synapser)
+library(dplyr)
 
 # look at RNA samples to WES samples only
 
@@ -12,8 +13,8 @@ exome_to_rna <- read.table(synGet("syn52913687")$path)
 colnames(exome_to_rna) <- c("sample_a", "sample_b","relatedness", "ibs2", "hom_concordance", "paired", "source_a", "assay_a", "source_b", "assay_b","comparison_type")
 
 # make relatedness scatter plot
-mixed_plot <- ggplot(exome_to_rna, aes(x=relatedness, y=ibs2, color=paired, shape=comparison_type)) + 
-  geom_point(alpha=0.5, size=2) + 
+mixed_plot <- ggplot(exome_to_rna %>% arrange(paired), aes(x=relatedness, y=ibs2, color=paired, shape=comparison_type)) + 
+  geom_point(alpha=0.6, size=2) + 
   scale_color_manual(values = c("yes" = "#c9182c", "no" = "#0D3B66"), name = "Same Individual") +
   scale_shape_manual(values = c("cell_line" = 9, "tumor" = 16, "xenograft" = 3, "normal"=15, "tumor/normal"=17), labels = c("cell line/tumor or normal", "tumor/tumor", "tumor/normal", "xenograft/tumor or normal"), name = "Compared Tissues") +
   theme_bw() +
