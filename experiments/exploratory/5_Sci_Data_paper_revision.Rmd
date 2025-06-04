@@ -1,0 +1,1712 @@
+---
+title: "RNAseq Figures output for paper"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: false
+    latex_engine: xelatex
+    fig_caption: yes
+    highlight: haddock
+      
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo =F,message = F,warning = F,include = F)
+```
+
+
+```{r,include=F}
+# setting up working path 
+rm(list=ls())
+Path="/Volumes/lyu.yang/MAC_1/R/Project/11_JH_biobank_paper"
+COUNT_path=file.path(Path,"data" ,"RNAseq","Count")
+dir(COUNT_path)
+Unused_samples=c("JH-2-084","JH-2-106") # These samples are not inclucded in the analyssi
+Reference_path="/Volumes/lyu.yang/MAC_1/R/Public_database/Reference/Human_GSEA" # Download GMT files from  from https://www.gsea-msigdb.org/gsea/msigdb
+Process_data=file.path(Path,"data","Process_data")
+
+dir.create(COUNT_path,recursive = T)
+dir(Reference_path)
+```
+
+
+```{r,include=F}
+library(dplyr)
+library(ggplot2)
+library(ggbreak)
+library(synapser)
+ 
+```
+
+
+```{r}
+# Functions
+PCA_Plot_3<- function (data,Annotation,VAR,Color,manu_color) {
+  # logcountdata row:genes,column: samples
+  pca <- prcomp(data) 
+  pca_out<-as.data.frame(pca$x)
+  df_out<- pca_out %>%tibble::rownames_to_column(var=VAR)  %>% left_join(., Annotation) 
+  #df_out<- merge (pca_out,Annotation,by.x=0,by.y=0) 
+  PC1_var=summary(pca)$importance%>%as.data.frame()%>%.[2,1]%>%scales:: percent(accuracy = 0.01)
+  PC2_var=summary(pca)$importance%>%as.data.frame()%>%.[2,2]%>%scales:: percent(accuracy = 0.01)
+  # label_color<- factor(df_out[,group])
+  ggplot(df_out,aes_string(x="PC1",y="PC2")) +geom_point(aes_string(colour = Color),size=3) +scale_color_manual(values = manu_color)+xlab(paste0("PC1(",PC1_var,")"))+ylab(paste0("PC2(",PC2_var,")"))+labs(color = gsub("_"," ",Color))+
+    theme(legend.position = "bottom",legend.direction = "vertical",legend.title = element_text(size=12, vjust = .5, hjust = .3))
+}
+
+
+
+pheatmap_pathway_3<- function (expression_data, Gene_select,pathway_name,Annotation,Label_def,anno_color) {
+ # Gene_select<-Pathway_list[,pathway_name]%>%unique()
+  Gene_select_anno= expression_data[,colnames(expression_data) %in% Gene_select] %>%t()
+  pheatmap::pheatmap(Gene_select_anno, cellheight =10,cellwidth =10  , scale = "row",
+                     treeheight_row = 5,main=pathway_name,
+                     show_rownames = T,show_colnames = F,
+                     annotation_col= Annotation,
+                     annotation_colors= anno_color,border_color = "black",
+                     # annotation_row=Annotation,
+                     #annotation_legend=Label_def,
+                     cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean",silent = F)
+  
+}
+
+
+pheatmap_pathway_3_update <- function(expression_data, Gene_select, pathway_name,
+                               Annotation, legend_title, anno_color) {
+  # Subset the expression matrix for the selected genes and transpose it
+  Gene_select_anno <- t(expression_data[, colnames(expression_data) %in% Gene_select])
+  
+  # Create the heatmap using pheatmap with silent = TRUE to capture the gtable object
+  ph <- pheatmap::pheatmap(Gene_select_anno,
+                           cellheight = 10,
+                           cellwidth  = 10,
+                           scale = "row",
+                           treeheight_row = 5,
+                           main = pathway_name,
+                           show_rownames = TRUE,
+                           show_colnames = FALSE,
+                           annotation_col = Annotation,
+                           annotation_colors = anno_color,
+                           border_color = "black",
+                           cluster_rows = TRUE,
+                           cluster_cols = FALSE,
+                           clustering_distance_rows = "euclidean",
+                           silent = TRUE)
+  
+  # Load required packages
+  require(grid)
+  require(gtable)
+  
+  # Extract the gtable object from the pheatmap output
+  g <- ph$gtable
+  
+  # Locate the legend in the gtable layout (its name is "legend")
+  legend_index <- which(g$layout$name == "legend")
+  
+  if (length(legend_index) > 0) {
+    # Extract the legend grob
+    legend <- g$grobs[[legend_index]]
+    
+    # If the legend is not already a gtable, wrap it in a gtable.
+    if (!inherits(legend, "gtable")) {
+      legend <- gtable::gtable(widths = unit(1, "npc"),
+                               heights = unit(1, "npc"),
+                               grobs = list(legend))
+    }
+    
+    # Remove the original legend from its default location
+    g$grobs[[legend_index]] <- grid::nullGrob()
+    
+    # Create a text grob for the legend title
+    title_grob <- grid::textGrob(legend_title, 
+                                 gp = grid::gpar(fontsize = 10, fontface = "bold"))
+    
+    # Add a new row at the top of the legend for the title, with a small extra height for spacing
+    legend <- gtable::gtable_add_rows(legend,
+                                      heights = grid::grobHeight(title_grob) + unit(2, "mm"),
+                                      pos = 0)
+    legend <- gtable::gtable_add_grob(legend,
+                                      title_grob,
+                                      t = 1, l = 1, r = ncol(legend))
+    
+    # Add a new row at the bottom of the overall gtable to accommodate the legend
+    g <- gtable::gtable_add_rows(g,
+                                 heights = grid::grobHeight(legend) + unit(4, "mm"))
+    # Place the modified legend into this new row spanning the full width
+    g <- gtable::gtable_add_grob(g, legend,
+                                 t = nrow(g), l = 1, r = ncol(g))
+  }
+  
+  # Draw the modified heatmap
+  grid::grid.newpage()
+  grid::grid.draw(g)
+  
+  invisible(ph)
+}
+
+
+singcore_Normalized_GSEA=function (data,genelist, is.na=T) {
+  nm=names(genelist)
+  plist=list()
+  Data_prepare=singscore::rankGenes (data)
+ # n_genes=length(intersect(genelist,rownames(data)))
+  
+   if( is.list(genelist)) {
+    for (i in 1:length(genelist)) { 
+      n_genes=length(intersect(unique(genelist[[i]]),rownames(data)))
+      if (n_genes>4){
+      scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[[i]]))%>%.[1]
+      scoredf$Normalized=scale(scoredf[,1])
+      colnames(scoredf)=c(paste0(nm[i],"_singscore") , paste0(nm[i],"_Normalized_singscore" ))
+      if(nrow(scoredf)==ncol(data)) {
+        plist[[nm[i]]]=scoredf
+      }
+      }
+     }
+  }
+  if(is.data.frame(genelist))  {
+    
+  for (i in seq_along(genelist)) { 
+    n_genes=length(intersect(unique(genelist[[i]]),rownames(data)))
+    if (n_genes>4){
+    scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[,i]))%>%.[1]
+    scoredf$Normalized=scale(scoredf[,1])
+    colnames(scoredf)=c(paste0(nm[i],"_singscore") , paste0(nm[i],"_Normalized_singscore" ))
+    if(nrow(scoredf)==ncol(data)) {
+      plist[[nm[i]]]=scoredf
+     }
+    }
+  }
+  }
+  return(plist)
+  #output=do.call("cbind",plist)
+}
+
+Singscore_data_plot_2=function(gene_list,expression_data,expression_data_anno,Annotation_File,stat_method,Anno_color){
+  Gene_singscore= singcore_Normalized_GSEA(expression_data,gene_list)
+  Manu_color=unlist(Anno_color )
+  names(Manu_color)=gsub("Group.", "",names(Manu_color))
+
+  Annotation_file=Annotation_File[,c("Group")]  %>%as.data.frame()
+  rownames(Annotation_file)=Annotation_File$Sample_name
+  plist=list()
+ 
+  plist[[1]]=pheatmap_pathway_3 (expression_data_anno,unlist(gene_list),names(gene_list), Annotation_file,"V1",Anno_color)
+
+  
+  plist[[2]]=GGplot_singscore_boxplot_2(Gene_singscore[[1]],Annotation_File,"Group","Sample_name",Method=stat_method,Manu_color)
+
+}
+
+
+GGplot_singscore_boxplot_2=function(singscore,Annotation,group_col,Var,Method,manu_color) {
+  library(ggplot2)
+  library(ggpubr)
+  gene_name=colnames(singscore)[2]
+  Data=singscore%>%tibble::rownames_to_column(.,var=Var)
+  Data2= Data %>% left_join(.,Annotation,by=Var)%>%as.data.frame()
+
+
+  ggplot(Data2,aes_string(x="Group",y=gene_name,fill=group_col)) +geom_boxplot() +xlab("")+
+    ylab(gene_name)+scale_fill_manual(values = manu_color)+ theme(axis.title.y = element_text(size=8),axis.text.x = element_text(angle=90, vjust=.5, hjust=1)) +stat_compare_means(method = Method)
+
+
+
+}
+
+
+
+
+Singscore_boxplot <- function(gene_list, expression_data, Annotation_File,Group, stat_method, Manu_color) {
+  library(ggplot2)
+  library(ggpubr)
+  library(dplyr)
+
+  # Calculate Singscore
+  Gene_singscore <- singcore_Normalized_GSEA(expression_data, gene_list)
+
+  # Get first singscore result
+  singscore_data <- Gene_singscore[[1]]
+  gene_name <- colnames(singscore_data)[2]  # Extract gene column name
+
+  # Prepare Data for Boxplot
+  Data <- singscore_data %>%
+    tibble::rownames_to_column(var = "Sample_name") %>%
+    left_join(Annotation_File, by = "Sample_name") %>%
+    as.data.frame()
+ 
+ boxplot_plot <- ggplot(Data, aes_string(x = Group, y = gene_name, fill = Group)) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.8) +  # Adjust transparency for clarity
+    xlab("") + ylab(gsub("_"," ",gene_name)) +
+    scale_fill_manual(values = Manu_color) +
+    stat_compare_means(method = stat_method,size =8) +
+    theme_classic() +  # Remove background
+    theme(
+      axis.title.y = element_text(size = 20),
+      axis.text.x = element_text(size=20,angle =45, vjust = 0.7, hjust =0.7 ),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank(),  # Remove minor grid lines
+      panel.border = element_blank(),      # Remove panel border
+      legend.position = "none"             # Remove legend
+    )
+
+  return(boxplot_plot)
+}
+
+
+Volcano_plot_rnaseq_add_label=function(All_res_Data,Pathway_list,pathway_name){
+  
+  cols <- c("DOWN"="#26b3ff", "NO"= "grey","UP"= "#ffad73","up" = "red", "down" = "blue") 
+  sizes <- c( "DOWN"=0.5,"UP"=0.5 ,"up" = 2, "down" = 2, "NO" = 0.5) 
+  alphas <- c("UP" = 1, "DOWN" = 1, "NO" = 0.5)
+  
+  pathway_genes=Pathway_list [[pathway_name]]%>%as.character()
+  
+  library(ggrepel)
+  Data=All_res_Data%>%dplyr::filter(!gene_symbol%in%pathway_genes)%>%mutate(diffexpressed=ifelse(padj>0.05|is.na(padj),"NO",ifelse(log2FoldChange>0,"UP","DOWN")))%>%mutate(delabel=NA)
+    
+  pathway_Data=All_res_Data%>%.[.$gene_symbol%in%pathway_genes,]%>%mutate(diffexpressed=ifelse(padj>0.05|is.na(padj),"NO",ifelse(log2FoldChange>0,"up","down")))%>%mutate(delabel=ifelse(diffexpressed!="NO"&(log2FoldChange>0.27|log2FoldChange<as.numeric( "-0.27")),gene_symbol,NA))
+  # add a column of NAs
+  de=rbind(Data,pathway_Data)
+ 
+  MAX_y=max(-log10(de$padj))
+  # de$delabel <- NA
+  # 
+  # de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+   # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2FoldChange, y=-log10(padj), col=diffexpressed, label=delabel)) +
+    geom_point(show.legend = F) + ggtitle(pathway_name)+
+    theme_minimal() +
+    geom_text_repel() +scale_color_manual(values=cols)+scale_size_manual(values=sizes)+scale_alpha_manual(values=alphas)+
+    geom_vline(xintercept=c(-0.27, 0.27), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")+theme_bw()+  theme(legend.position = "none", panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+  
+  
+  
+  
+}
+
+
+Volcano_plot_rnaseq_add_label_update=function(All_res_Data,Pathway_list,pathway_name){
+  
+  cols <- c("DOWN"="#26b3ff", "NO"= "grey","UP"= "#ffad73","up" = "red", "down" = "blue") 
+  sizes <- c( "DOWN"=0.5,"UP"=0.5 ,"up" = 2, "down" = 2, "NO" = 0.5) 
+  alphas <- c("UP" = 1, "DOWN" = 1, "NO" = 0.5)
+  
+  pathway_genes=Pathway_list [[pathway_name]]%>%as.character()
+  
+  library(ggrepel)
+  Data=All_res_Data%>%dplyr::filter(!gene_symbol%in%pathway_genes)%>%mutate(diffexpressed=ifelse(padj>0.05|is.na(padj),"NO",ifelse(log2FoldChange>0,"UP","DOWN")))%>%mutate(delabel=NA)
+    
+  pathway_Data=All_res_Data%>%.[.$gene_symbol%in%pathway_genes,]%>%mutate(diffexpressed=ifelse(padj>0.05|is.na(padj),"NO",ifelse(log2FoldChange>0,"up","down")))%>%mutate(delabel=ifelse(diffexpressed!="NO"&(log2FoldChange>0.27|log2FoldChange<as.numeric( "-0.27")),gene_symbol,NA))
+  # add a column of NAs
+  de=rbind(Data,pathway_Data)
+ 
+  MAX_y=max(-log10(de$padj))
+  # de$delabel <- NA
+  # 
+  # de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+   # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2FoldChange, y=-log10(padj), col=diffexpressed, label=delabel)) +
+    geom_point(show.legend = F) + ggtitle(pathway_name)+
+    theme_minimal() +
+    geom_text_repel(size=3,force_pull= 0,max.overlaps  = Inf,
+    data = subset(de, log2FoldChange >2),
+    nudge_x= 6 - subset(de, log2FoldChange >2)$log2FoldChange,
+    segment.size= 0.2,
+    segment.color= "grey50",
+    direction = "y",
+    hjust         = 0.5 ) +
+    
+    geom_text_repel(size=3,force_pull= 0,max.overlaps  = Inf,
+    data = subset(de, log2FoldChange >1&log2FoldChange<2),
+    nudge_x= 4.5 - subset(de, log2FoldChange >1&log2FoldChange<2)$log2FoldChange,
+    segment.size= 0.2,
+    segment.color= "grey50",
+    direction = "y",
+    hjust         = 0.5 ) +
+    
+    geom_text_repel(size=3,force_pull= 0,max.overlaps  = Inf,
+    data = subset(de, log2FoldChange < as.numeric(-1)),
+    nudge_x= -5 - subset(de, log2FoldChange <as.numeric(-1))$log2FoldChange,
+    segment.size= 0.2,
+    segment.color= "grey50",
+    direction = "y",
+    hjust         = 0.5 ) +scale_color_manual(values=cols)+scale_size_manual(values=sizes)+scale_alpha_manual(values=alphas)+
+    geom_vline(xintercept=c(-0.27, 0.27), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")+theme_bw()+  theme(legend.position = "none", panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+  
+  
+  
+  
+}
+
+Volcano_plot_rnaseq_add_label_update_2 <- function(All_res_Data, Pathway_list, pathway_name, top_gene_number = 10,New_title=NULL) {
+  library(ggplot2)
+  library(ggrepel)
+  library(dplyr)
+  
+  if (is.null(New_title)){
+    New_title=paste0(pathway_name, " Volcano Plot (Top ", top_gene_number, " Genes)")
+  }
+
+  # Define colors, sizes, and alpha values for differentially expressed genes
+  cols <- c("DOWN" = "#26b3ff", "NO" = "grey", "UP" = "#ffad73", "up" = "red", "down" = "blue")
+  sizes <- c("DOWN" = 0.5, "UP" = 0.5, "up" = 2, "down" = 2, "NO" = 0.5)
+  alphas <- c("UP" = 1, "DOWN" = 1, "NO" = 0.5)
+
+  # Get pathway genes
+  pathway_genes <- as.character(Pathway_list[[pathway_name]])
+
+  # Filter genes NOT in the pathway
+  Data <- All_res_Data %>%
+    filter(!gene_symbol %in% pathway_genes) %>%
+    mutate(
+      diffexpressed = case_when(
+        padj > 0.05 | is.na(padj) ~ "NO",
+        log2FoldChange > 0 ~ "UP",
+        TRUE ~ "DOWN"
+      ),
+      delabel = NA
+    )
+
+  # Filter pathway genes
+  pathway_Data <- All_res_Data %>%
+    filter(gene_symbol %in% pathway_genes) %>%
+    mutate(
+      diffexpressed = case_when(
+        padj > 0.05 | is.na(padj) ~ "NO",
+        log2FoldChange > 0 ~ "up",
+        TRUE ~ "down"
+      ),
+      delabel = ifelse(
+        diffexpressed != "NO" & (log2FoldChange > 0.27 | log2FoldChange < -0.27),
+        gene_symbol, NA
+      )
+    )
+
+  # Combine datasets
+  de <- bind_rows(Data, pathway_Data)
+
+  # Get top N upregulated and downregulated genes
+  top_genes_up <- pathway_Data %>% filter(diffexpressed %in% c("UP", "up")) %>% slice_max(order_by = log2FoldChange, n = top_gene_number)
+  top_genes_down <- pathway_Data %>% filter(diffexpressed %in% c("DOWN", "down")) %>% slice_min(order_by = log2FoldChange, n = top_gene_number)
+
+  # Maximum Y-axis value for scaling
+  MAX_y <- max(-log10(de$padj), na.rm = TRUE)
+
+  # Plot Volcano
+  ggplot(data = de, aes(x = log2FoldChange, y = -log10(padj), color = diffexpressed, label = delabel)) +
+    geom_point(size = 1.5) +  # Show points with color mapping
+    scale_color_manual(values = cols) +  # Apply manual color scale
+    scale_size_manual(values = sizes) + 
+    scale_alpha_manual(values = alphas) + 
+    theme_minimal() +
+    
+    # Label **Top N Upregulated Genes in Red**
+    geom_text_repel(
+      data = top_genes_up, 
+      aes(label = gene_symbol),
+      color = "red",  # 🔴 Upregulated genes labeled in red
+      size = 8, segment.size = 0.5, segment.color = "grey50",
+      nudge_x = 2, direction = "y", hjust = 0.5
+    ) +
+
+    # Label **Top N Downregulated Genes in Blue**
+    geom_text_repel(
+      data = top_genes_down, 
+      aes(label = gene_symbol),
+      color = "blue",  # 🔵 Downregulated genes labeled in blue
+      size = 8, segment.size = 0.5, segment.color = "grey50",
+      nudge_x = -3, direction = "y", hjust = 1
+    ) +
+    
+    # Add vertical significance threshold lines
+    geom_vline(xintercept = c(-0.27, 0.27), col = "red", linetype = "dashed") +
+    
+    # Add horizontal significance threshold line
+    geom_hline(yintercept = -log10(0.05), col = "red", linetype = "dashed") +
+    
+    ggtitle(New_title) +
+    
+    # Custom theme adjustments
+    theme_bw() +
+    theme(
+      legend.position = "none", 
+      axis.text.x = element_text(size=20),
+      axis.text.y = element_text(size=20),
+      axis.title = element_text(size=40),
+      plot.title = element_text(hjust=0.5, face = "bold",size=25),
+      panel.border = element_rect(colour = "black", fill = NA, size =2),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_blank()
+    )
+}
+
+
+Bar_plot_RNAseq_4=function(data,Res,pathway_name,x_name,fill_name,compare_list,data_type) {
+  library(ggpubr)
+  my_comparisons <- compare_list
+  stat.test=Res[rownames(Res) %in% pathway_name,]
+  
+  Data=data[,c(pathway_name,"Group")] %>%setNames(c("Gene","Group"))
+ 
+  yposition=max(Data$Gene)
+  stat.test=Res[rownames(Res) %in% pathway_name,]  %>% mutate(y.position = 1,".y."="Gene")%>%
+    mutate("p.format"=ifelse(padj<0.001,"<0.001",ifelse(padj<0.01,"<0.01",ifelse(padj<0.05,"<0.05",round(padj,2)))) ,method="Deseq2")  %>%
+    rename(p=pvalue,"p.adj"="padj",)   %>% mutate(y.position = yposition+0.5 ) 
+  # p=ggplot(data,aes_string(
+  #   x =x_name,
+  #   y = pathway_name,
+  #   fill=fill_name
+  # ) )+  geom_violin( ) +
+  #   geom_boxplot(width=0.1) + theme(plot.title=element_text(size=5),legend.position="none")+ scale_fill_brewer(palette="Dark2")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+  
+  p=ggboxplot(Data, x = "Group", y = "Gene",fill="Group")+theme(plot.title=element_text(size=5),legend.position="none")+ylab(paste0(pathway_name,"_",data_type))+xlab("")+scale_fill_brewer(palette="Dark2")+ggtitle(pathway_name)+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +theme(plot.title = element_text(size = 10, face = "bold"))
+  p + stat_pvalue_manual(stat.test,label = "p.format")
+  
+}
+Heatmap_simple=function(gene_list,expression_data,expression_data_anno,Annotation_File){
+   
+  Annotation_file=Annotation_File[,c("Group")]  %>%as.data.frame()
+  rownames(Annotation_file)=Annotation_File$Sample_name
+  pheatmap_pathway_3_no_genename (expression_data_anno,unlist(gene_list),names(gene_list), Annotation_file,"V1")
+  #list(p2)
+}
+
+
+Enrich_dotplot=function(FGSEA_out,top_number=11,split=F,size_max=20,text_y_size=30){
+  # set top_number > input rows, the figure will be split in up and down pathways
+  library(ggbreak)
+  FGSEA_out$NES=round(FGSEA_out$NES,5)
+  #mycolor=RColorBrewer::brewer.pal(3,"YlOrRd")
+
+if(nrow(FGSEA_out)<top_number) {
+    data=FGSEA_out%>%mutate(Norm_padj=-log10(padj))%>%mutate(State=ifelse(NES>0,"Activated","Inhibited"))%>%arrange(desc(NES))
+    Up_data=data%>%dplyr::filter(NES>0)%>%arrange(NES)
+    DN_data=data%>%dplyr::filter(NES<0)
+    data=rbind(DN_data,Up_data)
+    data$pathway=factor(data$pathway,levels =data$pathway )
+    MAX_NES=max(data$NES)%>%ceiling()
+    min_NES=min(data$NES)%>%floor()
+   
+  # ggplot(data) +geom_point(aes(x = NES, y = pathway, color = -log10(padj),size=gene_counts))+scale_size("gene_counts") +
+  #P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_padj))+scale_size_continuous (name="-log10(padj)",range=c(2,6))+scale_fill_manual(name="State",c("red","green")) +
+  #P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_padj))+scale_size_area (name="-log10(padj)",max_size=size_max,breaks=c(2,4,6,8),limits = c(2, 10))+scale_fill_manual(name="State",c("red","green")) +
+  #P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_padj))+scale_size_continuous (name="-log10(padj)",range=c(2,size_max), breaks = c(2,  4, 6,8,10,12)),guide="legend")+scale_fill_manual(name="State",c("red","green")) +
+  P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_padj))+scale_size_area (name="-log10(padj)",max_size=size_max,breaks=c(2,4,6,8))+scale_fill_manual(name="State",c("red","green")) +  
+     theme_bw() +labs(x="Normalized enrichment score",y="")+
+      theme(panel.border = element_rect(colour = "black", fill = NA, size = 5),
+            axis.text.x = element_text(size=20),
+            axis.title = element_text(size=30),
+            plot.title = element_text(hjust=0.5, face = "bold",size=15),
+            legend.position = "bottom", 
+            legend.direction = "vertical",
+            legend.title = element_text(size=25,hjust=0.5, face="bold"),
+            axis.text.y = element_text(size =text_y_size,margin = margin(r = 20)))
+  if (!isTRUE(split)|min_NES>0|MAX_NES<0) {
+    return(P)
+    } else {
+    Breaks=c(min_NES,-1,1,MAX_NES)
+   return(P+scale_x_break(c(-1, 1), scales = 1.5))
+ # xlab("Normalized enrichment score") +ylab("")+scale_x_break(c(-1, 1), scales = 1.5)
+   }
+  
+  
+
+ } else {
+      data=FGSEA_out%>%arrange(padj)%>%mutate(Norm_padj=-log10(padj))%>%mutate(State=ifelse(NES>0,"Activated","Inhibited"))%>%arrange(desc(NES))
+       Up_data=data%>%dplyr::filter(NES>0)%>%arrange(NES)
+       DN_data=data%>%dplyr::filter(NES<0)
+      if(nrow(Up_data)>nrow(DN_data)){
+           DN_top_number=top_number/2
+        up_top_number=top_number-DN_top_number  
+       
+      } else {
+        up_top_number=top_number/2
+        DN_top_number=top_number-up_top_number
+
+      
+      }
+      
+      UP_data2=Up_data%>%arrange(NES)%>%.[1:up_top_number,]%>%na.omit()
+      UP_data2$pathway=factor(UP_data2$pathway,levels =UP_data2$pathway )
+
+     DN_data2=DN_data%>%arrange(NES)%>%.[1:DN_top_number,]%>%na.omit()
+      DN_data2$pathway=factor( DN_data2$pathway,levels = DN_data2$pathway )
+  
+      P1=ggplot(UP_data2) +geom_point(aes(x = NES, y = pathway, size=Norm_padj), color ="red")+scale_size("Norm_padj") +
+     theme_bw() +labs(x="Normalized enrichment score",y="")+
+      theme(axis.text.x = element_text(size=rel(1.15)),
+        axis.title = element_text(size=rel(1.15)),plot.title = element_text(hjust=0.5, 
+      	face = "bold"),legend.title = element_text(size=rel(1.15),hjust=0.5, face="bold"),axis.text.y = element_text(size =15))+
+        scale_size_continuous (name="-log10(padj)",range=c(3,8)) +ggtitle("Activated pathways")
+    
+        P2=ggplot(DN_data2) +geom_point(aes(x = NES, y = pathway ,size=Norm_padj), color ="green")+scale_size("Norm_padj") +
+     theme_bw() +labs(x="Normalized enrichment score",y="")+
+      theme(axis.text.x = element_text(size=rel(1.15)),
+        axis.title = element_text(size=rel(1.15)),plot.title = element_text(hjust=0.5, 
+      	face = "bold"),legend.title = element_text(size=rel(1.15),hjust=0.5, face="bold"),axis.text.y = element_text(size =15))+scale_size_continuous (name="-log10(padj)",range=c(3,8))+ggtitle("Inhibited pathways")
+        
+      cowplot::plot_grid(P1,P2,nrow=1)  
+    
+     }
+}
+
+UMAP_plot=function(Data_select,annotation) {
+ Data.umap = umap::umap(Data_select)
+ umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))
+ rownames(umap_plot_df)==rownames(annotation)
+ umap_plot_df_2=cbind(umap_plot_df,Data_select)%>%tibble::rownames_to_column(.,var="Sample_name")%>%left_join(.,annotation,by="Sample_name")
+
+ 
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color=tumorType
+  )
+) +  geom_point( size = 3)
+
+}
+
+
+
+pheatmap_pathway_annotation_bottom <- function(expression_data, Gene_select, pathway_name,
+                                                 Annotation, anno_color) {
+  # Subset the expression matrix for the selected genes and transpose it
+  Gene_select_anno <- t(expression_data[, colnames(expression_data) %in% Gene_select])
+  
+  # Create the heatmap using pheatmap with silent = TRUE to capture the gtable object
+  ph <- pheatmap::pheatmap(Gene_select_anno,
+                           cellheight = 10,
+                           cellwidth  = 10,
+                           scale = "row",
+                           treeheight_row = 5,
+                           main = pathway_name,
+                           show_rownames = TRUE,
+                           show_colnames = FALSE,
+                           annotation_col = Annotation,
+                           annotation_colors = anno_color,
+                           annotation_legend = T,
+                           annotation_names_col=F,
+                           border_color = "black",
+                           cluster_rows = TRUE,
+                           cluster_cols = FALSE,
+                           clustering_distance_rows = "euclidean",
+                           silent = TRUE)
+  
+  # Load required libraries
+  require(grid)
+  require(gtable)
+  
+  # Extract the gtable from the pheatmap object
+  g <- ph$gtable
+  
+   ## 1. Modify the MAIN legend (the color scale legend) by adding a title.
+  main_legend_index <- which(g$layout$name == "legend")
+  if (length(main_legend_index) > 0) {
+    main_legend <- g$grobs[[main_legend_index]]
+    # Create a text grob for the main legend title.
+    # Set x to the center, justify the text to "center", and force the width to fill the space.
+    main_title_grob <- grid::textGrob("Scaled Normalized Counts",
+                                      gp = grid::gpar(fontsize = 10, fontface = "bold"),
+                                      x = unit(0, "npc"), just = "left",
+                                      name = "main_legend_title")
+    
+    # If the main legend is not already a gtable, wrap it in one.
+    if (!inherits(main_legend, "gtable")) {
+      tmp_main <- main_legend
+      main_legend <- gtable::gtable(widths = unit(5, "npc"), heights = unit(1, "npc"))
+      main_legend <- gtable::gtable_add_grob(main_legend, tmp_main, t = 1, l = 1)
+    }
+    
+    # Add a new row at the top of the main legend for the title.
+    # Here we add extra space (unit(10, "mm")) to help display long titles.
+    main_legend <- gtable::gtable_add_rows(main_legend,
+                                           heights = grid::grobHeight(main_title_grob) + unit(5, "mm"),
+                                           pos = 0)
+    main_legend <- gtable::gtable_add_grob(main_legend, main_title_grob,
+                                           t = 1, l = 1, r = ncol(main_legend))
+    
+    
+    # Add an extra column at the left to shift the legend to the right by 2 mm.
+    main_legend <- gtable::gtable_add_cols(main_legend, widths = unit(45, "mm"), pos = 0)
+
+    # Replace the original main legend with the modified version
+    g$grobs[[main_legend_index]] <- main_legend
+  }
+  
+  # Locate the annotation legend (its layout name is "annotation_legend")
+  anno_legend_index <- which(g$layout$name == "annotation_legend")
+  if (length(anno_legend_index) > 0) {
+    # Extract the annotation legend grob
+    anno_legend <- g$grobs[[anno_legend_index]]
+    
+    # Remove the annotation legend from its default position
+    g$grobs[[anno_legend_index]] <- grid::nullGrob()
+    
+    # Add a new row at the bottom of the overall gtable to accommodate the annotation legend.
+    # (We add a little extra spacing with unit(2, "mm").)
+    g <- gtable::gtable_add_rows(g,
+                                 heights = grid::grobHeight(anno_legend) + unit(20, "mm"))
+    
+    # Place the annotation legend into the new bottom row spanning the full width.
+    g <- gtable::gtable_add_grob(g, anno_legend,
+                                 t = nrow(g), l = 1, r = ncol(g))
+  }
+  
+  
+  
+  
+  
+  
+  return(g)
+  # Draw the modified heatmap
+  #grid::grid.newpage()
+  #grid::grid.draw(g)
+  
+  invisible(ph)
+}
+
+```
+
+
+```{r}
+# color_setting
+
+if (!file.exists(file.path(COUNT_path,"Biobank-samples-map-clinical-102523.xlsx"))){
+  synapser::synLogin(email="",token="")
+
+
+# DOWNLOAD CLINICAL METADATA (uncomment next line to download file)
+ synapser::synGet("syn52798607", downloadLocation = COUNT_path,)
+}
+
+
+
+# READ IN OFFLINE SAMPLESHEET
+dir(COUNT_path)
+jhu_clinicaldata_1 <- readxl::read_xlsx(file.path(COUNT_path,"Biobank-samples-map-clinical-102523.xlsx")) %>% 
+  dplyr::filter(assay == "Whole Exome Sequencing") %>%  #select WES samples
+  dplyr::filter(batch != "WU_batch3") %>%  # select only batch1, 2, 3 samples
+  dplyr::filter(tissue == "primary tumor") %>%  # select only tumor samples
+  dplyr::mutate(Aliquot_ID_Synapse_NEW = tidyr::replace_na(Aliquot_ID_Synapse_NEW, "A")) %>% 
+  dplyr::mutate(Tumor_Sample_Barcode = stringr::str_c(SpecimenID_Synapse_NEW, "-", Aliquot_ID_Synapse_NEW)) %>% 
+  dplyr::mutate(
+    # Create categories
+    age_group = dplyr::case_when(
+      age <= 10            ~ "0-10",
+      age > 10 & age <= 20 ~ "11-20",
+      age > 20 & age <= 30 ~ "21-30",
+      age > 30 & age <= 40 ~ "31-40",
+      age > 40 & age <= 50 ~ "41-50",
+      age > 50             ~ "> 50"
+    ),
+    # Convert to factor
+    age_group = factor(
+      age_group,
+      level = c("0-10", "11-20","21-30", "31-40", "41-50", "> 50")
+    )
+  ) %>% 
+  dplyr::select(tumorType, sex, age_group, location, tissue, individualID, Tumor_Sample_Barcode, NF1_loss_clinical_sequencing, NF1_loss_clinical_diagnosis) %>% 
+  dplyr::filter(!(Tumor_Sample_Barcode %in% c("JH-2-015-6AD96-A", "JH-2-106-B73E8-A", "JH-2-106-1447G-A", "JH-2-084-F9A84-A", "JH-2-084-AE169-A"))) %>% #remove 2-015TD, JH-2-106, JH-2-084 
+  purrr::set_names(nm = c(
+    "tumorType", 
+    "sex", 
+    "age_group", 
+    "location", 
+    "tissue", 
+    "individualID", 
+    "Tumor_Sample_Barcode", 
+    "NF1_clinical_sequencing", 
+    "NF1_clinical_diagnosis"
+  ))
+
+load(file.path(Process_data,"MPNST_VS_PN_Deseq2_outut.rdata"))
+
+```
+
+
+
+```{r colors, echo=TRUE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+## Assign colors to the metadata for plotting 
+# Define colors for tumor types
+#tumortype_colors <- c("#0D3B66", "#2d728f","#ab3428","#61C9A8","#7E52A0", "#F4D35E")
+tumortype_colors <- c("#0D3B66", "#e8be00","#ab3428","#61C9A8","#7E52A0", "#CABACB")
+
+names(tumortype_colors) <- jhu_clinicaldata_1$tumorType %>%unique()
+
+tumortype_colors=tumortype_colors[c(1,2,3,4,6)]
+
+# PCA plot for all tumors
+set.seed(123456)
+Tumor_color=tumortype_colors%>%na.omit()
+
+mat_colors <- list(Group = Tumor_color[1:2])
+names(mat_colors$Group) <- c("PN","MPNST")
+
+Manu_color=unlist(mat_colors)
+names(Manu_color)=gsub("Group.", "",names(Manu_color))
+
+Tumor_color2=tumortype_colors%>%na.omit()
+names(Tumor_color2)=tolower(names(Tumor_color2))
+
+mat_colors <- list(Group = Tumor_color[1:2])
+names(mat_colors$Group) <- c("PN","MPNST")
+
+Manu_color=unlist(mat_colors)
+names(Manu_color)=gsub("Group.", "",names(Manu_color))
+
+
+```
+
+
+
+```{r}
+# read sample annotation file
+Disease=data.frame(tumorType=c("Plexiform Neurofibroma","Cutaneous Neurofibroma", "Diffuse Infiltrating Neurofibroma" ,"Nodular Neurofibroma" ,"Malignant Peripheral Nerve Sheath Tumor"))%>%mutate(Disease=c("PN","cNF","DifNF","NodNF","MPNST"  ))
+
+RNAseq_anno=read.csv(file.path(COUNT_path,"RNAseq_samplemap.csv"))%>%mutate(batch=ifelse(specimenID=="JH-2-023-91HBD","WU_batch2",batch))%>%mutate(Sample_name=Syn_speicimenID)%>%left_join(.,Disease)%>%mutate("Tumor_type"=tolower(tumorType))
+RNAseq_anno$tumorType=factor(RNAseq_anno$tumorType,levels = names(Tumor_color))
+RNAseq_anno$"Tumor_type"=factor(RNAseq_anno$"Tumor_type",levels = tolower(names(Tumor_color)))
+
+
+# load data from Deseq2
+MPNST_PN_RNAseq_anno=RNAseq_anno%>%dplyr::filter(Disease%in%c("MPNST","PN"))
+Expression_vst_anno_MPNST_PN=Expression_vst_anno%>%dplyr::filter(Sample_name%in%MPNST_PN_RNAseq_anno$Sample_name)
+Expression_vst_MPNST_PN=Expression_vst[,rownames(Expression_vst_anno_MPNST_PN)]
+MPNST_vs_PN_res_2=MPNST_vs_PN_res%>%mutate(gene_symbol=rownames(.))
+MPNST_vs_PN_res_q005=MPNST_vs_PN_res %>%dplyr::filter(padj<0.05)
+
+q005_gene=rownames(MPNST_vs_PN_res_q005)
+Expression_vst_anno_MPNST_PN_q005=Expression_vst_anno_MPNST_PN[,c("Sample_name",q005_gene)]
+Expression_vst_MPNST_PN_q005=Expression_vst_MPNST_PN[q005_gene,]
+
+MPNST_PN_sample=MPNST_PN_RNAseq_anno [,c("Sample_name","individualID","tumorType","Disease")]
+
+
+
+#DEGs list
+sig_gene=MPNST_vs_PN_res %>%dplyr::filter(padj<0.05)%>%rownames(.)
+Expression_vst_MPNST_PN_sig=Expression_vst_MPNST_PN[sig_gene,]
+MPNST_vs_PN_DEGs=MPNST_vs_PN_res_2%>%dplyr::filter(padj<0.05&(abs(log2FoldChange)>0.27) )
+```
+
+
+\newpage
+
+
+# Figure 4
+
+```{r,include=F}
+# Fig4A
+P1=PCA_Plot_3  (t(Expression_vst),RNAseq_anno,"Sample_name","Tumor_type",Tumor_color2)
+# UMAP plot for all tumors
+#P2=UMAP_plot(t(Expression_vst),RNAseq_anno)+scale_color_manual(values = Tumor_color)
+
+#cowplot::plot_grid(P1,"",rel_widths = c(1,1.5),labels = c("A","B"))
+```
+
+# MPNST assoicated genes
+**S100B, CNP,PMP22,NGFR,SOX10, ,Expression of Schwann cell differentiation markers Downregulaed in MPNST** (PMID: 16510576)
+**TWIST1,SOX9 ,stem cell marker, upregulated in MPNST"**  (PMID: 16510576)
+**E-cadherin (CDH1) was downregulated in both neurofibroma and MPNSTs**
+**GAS1 (Growth Arrest Specific 1) is a Protein Coding gene. IFG2, PTK7, FGFR1, TWIST1, GAS1, and EGFR.upregulated in MPNST** (PMID: 32642732)
+** UBR5 PMID: 39857943**
+
+```{r,include=F,fig.width=18,fig.height=12}
+# Fig4B (11 mpnst genes DEGS padj0.05 FC1.2)
+# Define MPNST assoicated genes
+MPNST_associated_genes= c( "UBR5","TP53", "CNP","PMP22","NGFR","SOX9","SOX10","S100B","S100A4", "S100A1", "S100A2", "S100A6","CCNB2","TWIST1","EGFR","FGFR1","ERBB3","ERBB2","COL6A3","CDH1","CDKN2A","PDGFA","PDGFB","TGFBR2","GAS1","TGFB1","TGFB2","IGF2","PTK7")
+
+length(MPNST_associated_genes)
+
+
+Pathway_list=list("MPNST_associated_genes"=MPNST_associated_genes)
+Stat_method="wilcox.test"
+gene_list2=data.frame(MPNST_associated_genes=MPNST_associated_genes)
+colnames(Expression_vst_MPNST_PN_q005)==MPNST_PN_sample$Sample_name
+
+
+MPNST_associated_genes_DEGs=MPNST_vs_PN_DEGs%>%dplyr::filter(gene_symbol%in%MPNST_associated_genes)%>%arrange(log2FoldChange)
+# P2=Volcano_plot_rnaseq_add_label(MPNST_vs_PN_res_2,Pathway_list,"MPNST associated genes")
+#P2=Singscore_data_plot_2(gene_list2,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)
+
+mat_colors <- list(Tumor_type = Tumor_color2[1:2])
+#names(mat_colors$Group) <- c("PN","MPNST")
+
+Anno_table=RNAseq_anno[,c("Sample_name","Tumor_type")]  %>%as.data.frame()%>%dplyr::filter(Sample_name%in%colnames(Expression_vst_MPNST_PN_q005))%>%tibble::column_to_rownames(.,"Sample_name")
+
+```
+
+```{r,include=T}
+knitr::kable(MPNST_associated_genes_DEGs,caption = "MPNST associated genes (DEGS)")
+```
+
+
+
+
+
+```{r,include=T}
+MPNST_PN_sample_2=RNAseq_anno%>%dplyr::filter(Disease%in%c("MPNST","PN"))%>%.[,c("Sample_name","individualID","batch","Disease")]%>%arrange(Disease)
+knitr::kable(MPNST_PN_sample_2,caption="PN and MPNST")%>%kableExtra::kable_styling( latex_options="scale_down" )
+```
+
+\newpage
+
+```{r}
+P2=pheatmap_pathway_annotation_bottom(expression_data=t(Expression_vst_MPNST_PN_q005),Gene_select=MPNST_associated_genes,pathway_name=names(Pathway_list), Annotation=Anno_table,anno_color=mat_colors)
+
+```
+
+
+```{r,include=T,fig.width=20,fig.height=16}
+cowplot:: plot_grid(P1,grid::nullGrob(),nrow = 1,labels = c("A","B"),scale = c(0.4,1),label_size = 20,vjust=1)
+#cowplot:: plot_grid(P1,grid::nullGrob(), P2,nrow = 2,labels = c("A","","B"),rel_heights = c(0.6,1,1),label_size = 20,vjust=1)
+
+```
+
+```{r,include=T,fig.width=30,fig.height=24}
+cowplot:: plot_grid(P2,grid::nullGrob(),nrow = 1,labels = c("B","V"),scale = c(1.2,1),label_size = 20,vjust=1)
+```
+
+```{r,eval=F,fig.cap="MPNST markers expression box plot",include=T,fig.height=20,fig.width=14,out.height="95%"}
+# Compare_list=list(c("MPNST","PN"))
+# setdiff(MPNST_associated_genes,colnames(Expression_vst_anno_MPNST_PN))
+# 
+# res_2=MPNST_vs_PN_res%>%mutate(group1="MPNST",group2="PN")
+```
+
+
+# GSEA analysis (The combination of Hallmark and C2 genesets  )
+```{r,include=F}
+GMT_files=list.files(Reference_path,pattern="2023.2",full.names = T)%>%.[grepl("gmt.txt",.)]%>%.[grepl("c2.|h",.)]
+pathway_all= c(fgsea::gmtPathways(GMT_files[1]),fgsea::gmtPathways(GMT_files[2]))
+res_q005_rank=MPNST_vs_PN_res_q005%>%arrange(log2FoldChange) %>%.[c("log2FoldChange")]%>%as.data.frame() %>%tibble::rownames_to_column()
+ranks <- tibble::deframe(res_q005_rank)
+
+set.seed(1234) # keep set seed in the front of fgsea loop otherwise it will change the result
+fgseaRes_all <- fgsea::fgseaMultilevel(pathway_all, ranks,
+                           minSize=5,
+                           maxSize=500
+                           )
+fgseaRes_all%>%dplyr::filter(grepl("WP",pathway))
+
+Fgsea_all_sig_2=fgseaRes_all%>%dplyr::filter(padj<0.05)%>%arrange(padj)%>%dplyr::rename(gene_counts=size)
+#Hallmark_2=Fgsea_all_sig_2%>%dplyr::filter(grepl("HALLMARK",pathway))
+write.csv(Fgsea_all_sig_2[,c("pathway","padj","NES","gene_counts")],file.path(Process_data,"sig_combined_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+
+```
+
+\newpage
+
+# Top 30 pathways (filter pathways by NES>0, sort by adj, choose top 30 )
+
+```{r,include=F}
+Fgsea_all_sig_2$pathway=gsub("_"," ",Fgsea_all_sig_2$pathway)
+Fgsea_all_sig_2_up=Fgsea_all_sig_2%>%dplyr::filter(NES>0)
+Fgsea_all_sig_2_DN=Fgsea_all_sig_2%>%dplyr::filter(NES<0)
+write.csv(Fgsea_all_sig_2_up[,c("pathway","padj","NES","gene_counts")],file.path(Process_data,"sig_combined_up_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+write.csv(Fgsea_all_sig_2_DN[,c("pathway","padj","NES","gene_counts")],file.path(Process_data,"sig_combined_DN_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+
+
+Fgsea_all_sig_2_up_top30=Fgsea_all_sig_2_up[,c("pathway","padj","NES","gene_counts")][1:30,]%>%arrange(desc(NES))
+
+write.csv(Fgsea_all_sig_2_up_top30[,c("pathway","padj","NES","gene_counts")],file.path(Process_data,"sig_30_activated_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+
+```
+
+```{r,include=T}
+library(kableExtra)
+#knitr::kable(Fgsea_all_sig_2_up_top30,caption = "Top 30 activated pathways (NES>0,top 30 by padj)")%>%kableExtra::kable_styling(latex_options = c("scale_down"),full_width=F,font_size=5)%>%column_spec(1, width = "5cm",latex_column_spec = "p{5cm}") 
+
+knitr::kable(
+  Fgsea_all_sig_2_up_top30,
+  caption = "Top 30 activated pathways (NES > 0, top 30 by padj)"
+) |>
+  kableExtra::kable_styling(
+    latex_options = "scale_down",
+    full_width = FALSE,
+    font_size = 5  # or any size in points
+  )
+
+```
+
+\newpage
+
+```{r,include=F}
+P7=Enrich_dotplot(Fgsea_all_sig_2_up[1:30,],31,size_max=25,text_y_size = 60) 
+
+```
+
+
+```{r,include=T,fig.width=60,fig.height=70,out.width="70%"}
+P7
+```
+```{r}
+Chosen_pathways=c("MEISSNER_BRAIN_HCP_WITH_H3K27ME3","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION")
+Other_list=list()
+
+for (i in 1:length(Chosen_pathways)){
+  Name=Chosen_pathways[i]
+  
+  #Pathway_list=pathway[[Name]]%>%as.list()
+  #names(Pathway_list)=Name
+  Other_list[[i]]=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,Name,top_gene_number = 10,New_title=gsub("_"," ",Name))
+  
+}
+
+#install.packages("openxlsx")
+ 
+
+
+for (i in 1:length(Chosen_pathways)){
+  Name=Chosen_pathways[i]%>%gsub(" ","_",.)
+  Pathway_gene_list=pathway_all[[Name]]
+  DEGs_pathway=MPNST_vs_PN_DEGs%>%dplyr::filter(gene_symbol%in%Pathway_gene_list)%>%arrange(desc(log2FoldChange))%>%.[,c("log2FoldChange","pvalue","padj")]
+  write.csv(DEGs_pathway,file=file.path(Process_data,paste0(Name,"_DEGs_padj005_FC0.27.csv")))
+}
+  
+
+# heatmap_list=list()
+# 
+# for (i in 1:length(Chosen_pathways)){
+#      Name=Chosen_pathways[i]
+#      Pathway_list=pathway_all[[Name]]%>%as.data.frame()%>%setNames(Name)
+#      Stat_method="wilcox.test"
+#      heatmap_list[[i]]=Singscore_data_plot_2(Pathway_list,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)[[1]]
+# }
+# 
+# heatmap_list[[2]]
+```
+
+
+
+```{r,fig.width=22,fig.height=12,include=T,out.width="60%"}
+cowplot::plot_grid(plotlist = Other_list,nrow=1,labels = c("D"))
+```
+
+
+# Supplementary files
+
+```{r}
+Chosen_pathways=Fgsea_all_sig_2_up$pathway[1:5]
+
+Other_list=list()
+
+for (i in 1:length(Chosen_pathways)){
+  Name=Chosen_pathways[i]%>%gsub(" ","_",.)
+  
+  #Pathway_list=pathway_all[[Name]]%>%as.list()
+  #names(Pathway_list)=Name
+  Other_list[[i]]=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,Name,top_gene_number = 10,New_title=gsub("_"," ",Name))
+  
+}
+```
+
+
+```{r}
+for (i in 1:length(Chosen_pathways)){
+  Name=Chosen_pathways[i]%>%gsub(" ","_",.)
+  Pathway_gene_list=pathway_all[[Name]]
+  DEGs_pathway=MPNST_vs_PN_DEGs%>%dplyr::filter(gene_symbol%in%Pathway_gene_list)%>%arrange(desc(log2FoldChange))%>%.[,c("log2FoldChange","pvalue","padj")]
+  write.csv(DEGs_pathway,file=file.path(Process_data,paste0(Name,"_DEGs_padj005_FC0.27.csv")))
+}
+```
+
+
+```{r}
+library(dplyr)
+library(openxlsx)
+
+# Create a new workbook
+wb <- createWorkbook()
+
+for (i in seq_along(Chosen_pathways)) {
+  Name <- gsub(" ", "_", Chosen_pathways[i])
+  Pathway_gene_list <- pathway_all[[Name]]
+  
+  DEGs_pathway <- MPNST_vs_PN_DEGs %>%
+    filter(gene_symbol %in% Pathway_gene_list) %>%
+    arrange(desc(log2FoldChange)) %>%
+    select(gene_symbol,log2FoldChange, pvalue, padj)
+  
+  # Add a worksheet and write data
+  addWorksheet(wb, sheetName = i)
+  title_text <- paste0("Significant differentially expressed genes in ", Name,
+                       " between MPNST and PNF (padj <0.05 & |log2FoldChange| > 0.27)")
+  writeData(wb, sheet = i, x = data.frame(title_text), startRow = 1, colNames = FALSE)
+  writeData(wb, sheet = i, x = DEGs_pathway, startRow = 3, colNames = TRUE)
+ 
+}
+
+# Save workbook
+saveWorkbook(wb, file = file.path(Process_data, "Top_5_Pathways_DEGs.xlsx"), overwrite = TRUE)
+
+```
+
+
+```{r,fig.width=28,fig.height=22,include=T}
+
+cowplot::plot_grid(plotlist = Other_list,ncol=3)
+```
+
+
+```{r,include=F,fig.height=6,fig.width=8}
+top_heatmap_list=list()
+
+for (i in Fgsea_all_sig_2_up$pathway[1:5]){
+    i=gsub(" ","_",i)
+    Pathway_list=pathway_all[[i]]
+    #%>%as.data.frame()%>%setNames(i)
+    Stat_method="wilcox.test"
+# gene_list2=GSEA_pathway_list[[Pathway]]%>%as.data.frame() %>%setNames(Pathway)
+
+    top_heatmap_list[[i]]=pheatmap_pathway_annotation_bottom(expression_data=t(Expression_vst_MPNST_PN_q005),Gene_select=Pathway_list,pathway_name=gsub("_"," ",i), Annotation=Anno_table,anno_color=mat_colors)
+}
+```
+
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(top_heatmap_list[[1]])
+
+```
+
+
+
+```{r,fig.width=32,fig.height=40,include=T}
+cowplot::plot_grid( top_heatmap_list[[2]])
+
+```
+
+```{r,fig.width=28,fig.height=40,include=T}
+cowplot::plot_grid(top_heatmap_list[[3]])
+
+```
+
+
+```{r,fig.width=36,fig.height=54,include=T}
+cowplot::plot_grid( top_heatmap_list[[4]])
+
+```
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(top_heatmap_list[[5]])
+
+```
+
+
+
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+\newpage
+
+## Reactome pathway:Fig s2
+```{r,include=F}
+Reactome_pathway= Fgsea_all_sig%>%dplyr::filter(grepl("REACTOME",pathway))%>%.[,c(1,3,6,7)]%>%arrange(desc(NES))
+
+```
+
+
+```{r,include=F}
+P6=Enrich_dotplot(Reactome_pathway,40,size_max=15)
+```
+
+
+```{r,include=T,fig.width=26,fig.height=16,out.width="80%"}
+cowplot::plot_grid(P6)
+```
+
+
+```{r,include=F,fig.width=20,fig.height=15}
+Reactome_list=list()
+# Reactome_pathway_2=Reactome_pathway%>%dplyr::filter(pathway%in%c("REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_CELL_CYCLE_MITOTIC","REACTOME_EGR2_AND_SOX10_MEDIATED_INITIATION_OF_SCHWANN_CELL_MYELINATION"))
+Reactome_pathway=Reactome_pathway%>%arrange(desc(NES))
+Pathway_select=c("REACTOME_COLLAGEN_DEGRADATION","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX")
+for (i in Pathway_select){
+  Name=i
+  Reactome_list[[i]]=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,Name,top_gene_number = 10,New_title=gsub("_"," ",Name))
+  
+}
+```
+
+
+```{r,include=T,fig.width=36,fig.height=15}
+cowplot::plot_grid( plotlist=Reactome_list,ncol=3 ) 
+```
+
+\newpage
+
+```{r,include=F,fig.height=6,fig.width=8}
+heatmap_list=list()
+for (i in 1:length(Pathway_select)){
+    Name=Pathway_select[i]
+    Pathway_list=pathway_all[[Name]]
+    #%>%as.data.frame()%>%setNames(i)
+    Stat_method="wilcox.test"
+# gene_list2=GSEA_pathway_list[[Pathway]]%>%as.data.frame() %>%setNames(Pathway)
+
+    heatmap_list[[i]]=pheatmap_pathway_annotation_bottom(expression_data=t(Expression_vst_MPNST_PN_q005),Gene_select=Pathway_list,pathway_name=Name, Annotation=Anno_table,anno_color=mat_colors)
+}
+```
+
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[1]])
+
+```
+
+\newpage
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[2]])
+
+```
+
+\newpage
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[3]])
+
+```
+
+
+
+\newpage
+
+# Fig S3
+
+```{r,include=F,fig.width=20,fig.height=15}
+Other_list=list()
+# Reactome_pathway_2=Reactome_pathway%>%dplyr::filter(pathway%in%c("REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_CELL_CYCLE_MITOTIC","REACTOME_EGR2_AND_SOX10_MEDIATED_INITIATION_OF_SCHWANN_CELL_MYELINATION"))
+Three_pathways=c("MEISSNER_BRAIN_HCP_WITH_H3K27ME3","WINNEPENNINCKX_MELANOMA_METASTASIS_UP","HALLMARK_MTORC1_SIGNALING")
+
+names(pathway)%>%.[Three_pathways[3]]
+
+setdiff(names(pathway)%>%.[grepl(Three_pathways[1],.)],Three_pathways)
+pathway[["MEISSNER_BRAIN_HCP_WITH_H3K27ME3"]]
+pathway[[Three_pathways[1]]]
+
+for (i in 1:length(Three_pathways)){
+  Name=Three_pathways[i]
+  Other_list[[i]]=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,Name,top_gene_number = 10,New_title=gsub("_"," ",Name))
+  
+  
+}
+```
+
+```{r,include=T,fig.width=36,fig.height=15}
+cowplot::plot_grid(plotlist = Other_list,nrow=1,labels = c("A","B","C"),label_size = 30)
+```
+
+```{r}
+outlist=list()
+for (i in 1:length(Three_pathways)){
+  Name=Three_pathways[i]
+  Gene_list=pathway_all[Name]
+  outlist[[i]]=Singscore_boxplot(Gene_list,Expression_vst_MPNST_PN_q005,RNAseq_anno,"Tumor_type",Stat_method,Tumor_color2[1:2])
+}
+
+```
+
+```{r,fig.height=14,fig.width=20,include=T}
+cowplot::plot_grid(plotlist = outlist,nrow=1,labels = c("D","E","F"),label_size = 30,vjust=-0.5)
+```
+
+
+
+```{r,include=F,fig.height=6,fig.width=8}
+heatmap_list=list()
+for (i in 1:length(Three_pathways)){
+    Name=Three_pathways[i]
+    Pathway_list=pathway_all[[Name]]
+    #%>%as.data.frame()%>%setNames(i)
+    Stat_method="wilcox.test"
+# gene_list2=GSEA_pathway_list[[Pathway]]%>%as.data.frame() %>%setNames(Pathway)
+
+    heatmap_list[[i]]=pheatmap_pathway_annotation_bottom(expression_data=t(Expression_vst_MPNST_PN_q005),Gene_select=Pathway_list,pathway_name=Name, Annotation=Anno_table,anno_color=mat_colors)
+}
+```
+
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[1]])
+
+```
+
+
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[2]])
+
+```
+
+```{r,fig.width=14,fig.height=16,include=T}
+cowplot::plot_grid(heatmap_list[[3]])
+
+```
+
+
+
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+
+
+
+```{r,include=F,fig.width=20,fig.height=15}
+Other_heatmap_list=list()
+
+for (i in 1:length(Three_pathways)){
+    Name=Three_pathways[i]
+    Pathway_list=pathway[[Name]]%>%as.data.frame()%>%setNames(Name)
+    Stat_method="wilcox.test"
+    Other_heatmap_list[[i]]=Singscore_data_plot_2(Pathway_list,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)[[1]]$gtable
+}
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+```{r,eval=F}
+Permutation_test=function(data,genelist) {
+ 
+  ranked <- singscore::rankGenes(data)
+  scoredf <- singscore::simpleScore(ranked, upSet = genelist)
+ # find out what backends can be registered on your machine
+  
+  BiocParallel::registered()
+  permuteResult = singscore::generateNull(upSet = genelist, downSet = NULL,rankData= ranked,B =100,   seed = 1234, useBPPARAM = NULL)
+   # call the permutation function to generate the empirical scores
+ # for B times.
+ pvals <- singscore::getPvals(permuteResult,scoredf)
+  return(list(permuteResult,scoredf,pvals))
+}
+
+
+Permu_out=Permutation_test(Expression_vst_MPNST_PN, Gene_list3)
+```
+
+
+
+
+```{r}
+Permutation_test=function(data,genelist) {
+ 
+  ranked <- singscore::rankGenes(data)
+  scoredf <- singscore::simpleScore(ranked, upSet = genelist)
+ # find out what backends can be registered on your machine
+  
+  BiocParallel::registered()
+  permuteResult = singscore::generateNull(upSet = genelist, downSet = NULL,rankData= ranked,B =3000,   seed = 1234, useBPPARAM = NULL)
+   # call the permutation function to generate the empirical scores
+ # for B times.
+ pvals <- singscore::getPvals(permuteResult,scoredf)
+  return(list(permuteResult,scoredf,pvals))
+}
+
+
+
+```
+
+
+
+```{r,include=F,fig.width=6,fig.height=18}
+MPNST_vs_PN_res_q005_up=MPNST_vs_PN_res_q005%>%dplyr::filter(log2FoldChange>0)
+#MPNST_vs_q005_up=Expression_vst_MPNST_PN_q005[rownames(MPNST_vs_PN_res_q005_up),MPNST_samples]
+
+Permu_out=Permutation_test(Expression_vst_MPNST_PN, Gene_list3)
+MPNST_samples=RNAseq_anno%>%dplyr::filter(Disease=="MPNST")%>%.$Syn_speicimenID
+PN_samples=RNAseq_anno%>%dplyr::filter(Disease=="PN")%>%.$Syn_speicimenID
+Permu_out[[3]]
+singscore::plotNull(Permu_out[[1]], Permu_out[[2]], Permu_out[[3]], sampleNames = MPNST_samples)
+```
+
+```{r}
+data_color=data.frame(Sample_name=rownames(Permu_out[[2]]))%>%left_join(RNAseq_anno)
+Data_input=Permu_out[[2]]%>%mutate(Disease=data_color$Disease)
+singscore::plotDispersion(Data_input)+ggtitle("test")+
+  geom_point(aes(color =Disease))
+```
+
+
+```{r}
+ranked <- singscore::rankGenes(as.data.frame(Expression_vst_MPNST_PN))%>%as.data.frame()
+```
+
+
+```{r}
+PN_plot_list=list()
+for (i in PN_samples) {
+  input=ranked[i]
+  PN_plot_list[[i]]=singscore::plotRankDensity(input,upSet=Gene_list2)+ggtitle(i)
+}
+
+ 
+MPNST_plot_list=list()
+for (i in MPNST_samples) {
+  input=ranked[i]
+  MPNST_plot_list[[i]]=singscore::plotRankDensity(input,upSet=Gene_list2)+ggtitle(i)
+}
+```
+
+```{r,include=F,fig.width=8,fig.height=20}
+cowplot::plot_grid(plotlist =PN_plot_list,ncol=1 )
+```
+
+
+```{r,include=F,fig.width=8,fig.height=20}
+cowplot::plot_grid(plotlist =MPNST_plot_list,ncol=1 )
+```
+
+
+```{r,include=F,fig.width=6,fig.height=18}
+singscore::plotNull(Permu_out[[1]], Permu_out[[2]], Permu_out[[3]], sampleNames = PN_samples)
+
+
+```
+ 
+ 
+```{r,include=F,fig.width=6,fig.height=24}
+
+PN_samples=RNAseq_anno%>%dplyr::filter(Disease=="PN")%>%.$Syn_speicimenID
+
+singscore::plotNull(Permu_out[[1]], Permu_out[[2]], Permu_out[[3]], sampleNames = PN_samples)
+```
+
+
+```{r,include=F,fig.width=20,fig.height=15}
+names(pathway)%>%.[Three_pathways[3]]
+
+setdiff(names(pathway)%>%.[grepl(Three_pathways[1],.)],Three_pathways)
+pathway[["MEISSNER_BRAIN_HCP_WITH_H3K27ME3"]]
+pathway[[Three_pathways[1]]]
+
+for (i in 1:length(Three_pathways)){
+  Name=Three_pathways[i]
+  Pathway_list=pathway[[Name]]%>%as.list()
+  names(Pathway_list)=Name
+  Other_list[[i]]=Volcano_plot_rnaseq_add_label_update(MPNST_vs_PN_res_2,pathway,Name)
+  
+}
+
+
+Other_heatmap_list=list()
+
+for (i in 1:length(Three_pathways)){
+    Name=Three_pathways[i]
+    Pathway_list=pathway[[Name]]%>%as.data.frame()%>%setNames(Name)
+    Stat_method="wilcox.test"
+    Other_heatmap_list[[i]]=Singscore_data_plot_2(Pathway_list,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)[[1]]$gtable
+}
+```
+ 
+
+
+
+## Reactome pathway
+```{r,include=T}
+Reactome_pathway= Fgsea_all_sig%>%dplyr::filter(grepl("REACTOME",pathway))%>%.[,c(1,3,6,7)]%>%arrange(desc(NES))
+
+```
+
+
+```{r,fig.width=18,fig.height=12,include=F}
+
+P6=Enrich_dotplot(Reactome_pathway,45,split=F)
+```
+
+
+```{r,include=T,fig.width=18,fig.height=15}
+Hallmark_list=list()
+
+for (i in Hallmark_pathway$pathway[1:3]){
+  Pathway_list=pathway[[i]]%>%as.list()
+  names(Pathway_list)=i
+  Hallmark_list[[i]]=Volcano_plot_rnaseq_add_label_update(MPNST_vs_PN_res_2,pathway,i)
+  
+}
+
+P7=cowplot::plot_grid( plotlist =Hallmark_list,ncol=3   ) 
+```
+
+
+```{r,include=T,fig.width=20,fig.height=15}
+
+Reactome_list=list()
+# Reactome_pathway_2=Reactome_pathway%>%dplyr::filter(pathway%in%c("REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_CELL_CYCLE_MITOTIC","REACTOME_EGR2_AND_SOX10_MEDIATED_INITIATION_OF_SCHWANN_CELL_MYELINATION"))
+
+
+for (i in Reactome_pathway$pathway[1:3]){
+  Pathway_list=pathway[[i]]%>%as.list()
+  names(Pathway_list)=i
+  Reactome_list[[i]]=Volcano_plot_rnaseq_add_label_update(MPNST_vs_PN_res_2,pathway,i)
+  
+}
+
+P8=cowplot::plot_grid( plotlist =Reactome_list,ncol=3   ) 
+```
+
+
+\newpage
+
+# Figure 4
+
+```{r,fig.width=28,fig.height=16,include=T}
+cowplot:: plot_grid(P5,P7,P6,P8,nrow = 2,labels = c("A","B","C","D"),rel_widths = c(0.6,1,0.7,1))
+
+```
+
+\newpage
+
+# Supplymentary tables
+
+
+```{r,include=T}
+knitr::kable(Hallmark_pathway,caption = "Significant Hallmark pathways in MPNST vs PN (Adjust p value <0.05)")%>%kableExtra::kable_styling(latex_options = c("hold_position"))
+
+
+knitr::kable(Reactome_pathway,caption = "Significant Reactome pathways in MPNST vs PN (Adjust p value <0.05)")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+\newpage
+
+# Supplymentary fig1
+
+
+
+
+
+
+```{r,include=F,fig.height=6,fig.width=8}
+Reactome_heatmap_list=list()
+
+for (i in Reactome_pathway$pathway[1:3]){
+    Pathway_list=pathway[[i]]%>%as.list()
+    names(Pathway_list)=i
+    Pathway_list=pathway[[i]]%>%as.data.frame()%>%setNames(i)
+    Stat_method="wilcox.test"
+# gene_list2=GSEA_pathway_list[[Pathway]]%>%as.data.frame() %>%setNames(Pathway)
+
+ 
+    Reactome_heatmap_list[[i]]=Singscore_data_plot_2(Pathway_list,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)[[1]]$gtable
+}
+```
+
+
+
+```{r,include=T,fig.height=34,fig.width=22}
+
+cowplot::plot_grid(plotlist = c(Hallmark_heatmap_list,Reactome_heatmap_list),ncol=3,scale= 1)
+
+```
+
+
+\newpage 
+
+# Supplementary fig2
+
+
+```{r,include=F,fig.width=20,fig.height=15}
+Other_list=list()
+# Reactome_pathway_2=Reactome_pathway%>%dplyr::filter(pathway%in%c("REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_CELL_CYCLE_MITOTIC","REACTOME_EGR2_AND_SOX10_MEDIATED_INITIATION_OF_SCHWANN_CELL_MYELINATION"))
+Three_pathways=c("MEISSNER_BRAIN_HCP_WITH_H3K27ME3","WINNEPENNINCKX_MELANOMA_METASTASIS_UP","HALLMARK_MTORC1_SIGNALING")
+
+names(pathway)%>%.[Three_pathways[3]]
+
+setdiff(names(pathway)%>%.[grepl(Three_pathways[1],.)],Three_pathways)
+pathway[["MEISSNER_BRAIN_HCP_WITH_H3K27ME3"]]
+pathway[[Three_pathways[1]]]
+
+for (i in 1:length(Three_pathways)){
+  Name=Three_pathways[i]
+  Pathway_list=pathway[[Name]]%>%as.list()
+  names(Pathway_list)=Name
+  Other_list[[i]]=Volcano_plot_rnaseq_add_label_update(MPNST_vs_PN_res_2,pathway,Name)
+  
+}
+
+
+Other_heatmap_list=list()
+
+for (i in 1:length(Three_pathways)){
+    Name=Three_pathways[i]
+    Pathway_list=pathway[[Name]]%>%as.data.frame()%>%setNames(Name)
+    Stat_method="wilcox.test"
+    Other_heatmap_list[[i]]=Singscore_data_plot_2(Pathway_list,Expression_vst_MPNST_PN_q005,Expression_vst_anno_MPNST_PN_q005,GTAC_Sample_anno,Stat_method,mat_colors)[[1]]$gtable
+}
+```
+
+
+```{r,include=T,fig.width=20,fig.height=32}
+cowplot::plot_grid( plotlist =c(Other_list,Other_heatmap_list),ncol=3,rel_heights = c(0.8,1)   ) 
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+#########################################################################################################################################################################
+# gsea analysis for hallmark and C2 seperately
+
+```{r,include=F}
+set.seed(1234) # keep set seed in the front of fgsea loop otherwise it will change the result
+fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ 
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+Fgsea_all=do.call("rbind",fgsea_list)
+Fgsea_all_sig=Fgsea_all%>%dplyr::filter(padj<0.05)%>%arrange(padj)%>%dplyr::rename(gene_counts=size)
+
+```
+
+
+## Hallmark gene sets
+```{r,include=T,fig.width=18,fig.height=8}
+Hallmark_pathway= Fgsea_all_sig%>%dplyr::filter(grepl("HALLMARK",pathway))%>%.[,c(1,3,6,7)]%>%arrange(desc(NES))
+knitr::kable(Hallmark_pathway,caption = "sig pathways in Hallmark")
+```
+
+## Reactome pathway
+```{r,include=T}
+
+C2_pathway= Fgsea_all_sig%>%dplyr::filter(!grepl("HALLMARK",pathway))%>%.[,c(1,3,6,7)]%>%arrange(desc(NES))
+```
+
+
+```{r}
+dir(Process_data)
+write.csv(Hallmark_pathway[,c(1,2,3,4)],file.path(Process_data,"sig_Hallmark_pathway_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+write.csv(C2_pathway[,c(1,2,3,4)],file.path(Process_data,"sig_C2_pathway_pathways_in_MPNST_vs_PN.csv"),row.names = F)
+
+```
+
+
+```{r,include=F,fig.width=18,fig.height=8}
+Hallmark_pathway$pathway=gsub("HALLMARK_","",Hallmark_pathway$pathway)
+Hallmark_pathway$pathway=gsub("_"," ",Hallmark_pathway$pathway)
+Hallmark_pathway$pathway=stringr::str_to_title(Hallmark_pathway$pathway)
+Hallmark_pathway$pathway=gsub("G2m","G2M",Hallmark_pathway$pathway)
+
+#P3=Enrich_dotplot(Hallmark_pathway[1:6,],top_number=11,size_max = 10)
+
+Fig_title="EPITHELIAL MESENCHYMAL TRANSITION"%>%stringr::str_to_title()
+P4=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,"HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION",top_gene_number = 10,New_title = Fig_title )
+
+C2_pathway$pathway=gsub("_"," ",C2_pathway$pathway)
+#C2_pathway$pathway=stringr::str_to_title(C2_pathway$pathway)
+#C2_pathway$pathway=gsub("G2m","G2M",C2_pathway$pathway)
+#P5=Enrich_dotplot(C2_pathway[1:10,],11,size_max=10)
+
+# for answering the reviewer's question
+Pathway_name=c("MEISSNER_BRAIN_HCP_WITH_H3K27ME3")
+Fig_title=gsub("_", " ",Pathway_name)
+Fgsea_all%>%dplyr::filter(pathway%in%c("HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION", "MEISSNER_BRAIN_HCP_WITH_H3K27ME3"))
+
+Gene_list=pathway_all[Pathway_name]%>%unlist()%>%as.character()
+
+fgsea::plotEnrichment(Gene_list, stats = ranks)
+P6=Volcano_plot_rnaseq_add_label_update_2(MPNST_vs_PN_res_2,pathway_all,Pathway_name,top_gene_number = 10,New_title = Fig_title )
+
+# NOT INCLUDE IN THE FINAL VERSION
+Other_list=list()
+# Reactome_pathway_2=Reactome_pathway%>%dplyr::filter(pathway%in%c("REACTOME_DEGRADATION_OF_THE_EXTRACELLULAR_MATRIX","REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION","REACTOME_CELL_CYCLE_MITOTIC","REACTOME_EGR2_AND_SOX10_MEDIATED_INITIATION_OF_SCHWANN_CELL_MYELINATION"))
+Pathway_name=c("MEISSNER_BRAIN_HCP_WITH_H3K27ME3")
+Gene_list=pathway_all[Pathway_name]
+ 
+#P5=Singscore_boxplot(Gene_list,Expression_vst_MPNST_PN_q005,RNAseq_anno,"Tumor_type",Stat_method,Tumor_color2[1:2])
+Gene_list2=as.character(unlist(Gene_list))
+Gene_list3=intersect( rownames(MPNST_vs_PN_res_q005),Gene_list2)
+```
+
+\newpage 
+
+```{r,include=F,fig.width=32,fig.height=18,out.width="40%"}
+#gridExtra:: grid.arrange(P1,P2, P3[[1]][[4]], nrow = 2)
+#cowplot:: plot_grid(P3,NULL,P4[[1]][[4]],NULL,  nrow = 2,labels = c("C","","D"),rel_widths = c(0.5,1,1,0.1))
+#cowplot:: plot_grid(P3,NULL,labels = c("C","V"),nrow=1,scale =c(1,1),label_size = 20,vjust=1)
+
+#gridExtra:: grid.arrange(P1,P2, P3[[1]][[4]], nrow = 2)
+
+#cowplot:: plot_grid(P3,NULL,P4[[1]][[4]],NULL,  nrow = 2,labels = c("C","","D"),rel_widths = c(0.5,1,1,0.1))
+
+
+
+#cowplot:: plot_grid(P3,P5,labels = c("C","E"),nrow=1,rel_widths =c(1,1),label_size = 50,vjust=1)
+```
+
+```{r}
+C2_select=C2_pathway[1:10,]%>%mutate(Geneset="C2_Curated gene sets")
+Hallmark_select=Hallmark_pathway[1:6,]%>%mutate(Geneset="Hallmark gene sets")
+Merge=rbind(Hallmark_select,C2_select)
+Merge$Geneset=factor(Merge$Geneset,c("Hallmark gene sets","C2_Curated gene sets"))
+P3=Enrich_dotplot(Merge,30,size_max=15)+facet_wrap(~Geneset,scales = "free")+theme(
+    strip.background = element_blank(),                # remove gray background
+    strip.text = element_text(size = 50, face = "bold")  # control title text size
+  )
+```
+
+
+```{r,include=T,fig.width=40,fig.height=20,out.width="90%"}
+# C AND D
+P3
+```
+
+```{r,include=F,fig.width=32,fig.height=18,out.width="40%"}
+#gridExtra:: grid.arrange(P1,P2, P3[[1]][[4]], nrow = 2)
+
+#cowplot:: plot_grid(P3,NULL,P4[[1]][[4]],NULL,  nrow = 2,labels = c("C","","D"),rel_widths = c(0.5,1,1,0.1))
+#cowplot:: plot_grid(P4,grid::nullGrob(),labels = c("D",""),nrow=1,rel_widths =c(1,1),label_size = 50,vjust=1)
+
+```
+
+```{r,include=T,fig.width=32,fig.height=18,out.width="70%"}
+#gridExtra:: grid.arrange(P1,P2, P3[[1]][[4]], nrow = 2)
+
+#cowplot:: plot_grid(P3,NULL,P4[[1]][[4]],NULL,  nrow = 2,labels = c("C","","D"),rel_widths = c(0.5,1,1,0.1))
+cowplot:: plot_grid(P4,P6,labels = c("E","F"),nrow=1,rel_widths =c(1,1),label_size = 50,vjust=1)
+
+```
+
+
+
+
+```{r,include=T,fig.width=32,fig.height=8,out.width="50%"}
+#gridExtra:: grid.arrange(P1,P2, P3[[1]][[4]], nrow = 2)
+
+#cowplot:: plot_grid(P3,NULL,P4[[1]][[4]],NULL,  nrow = 2,labels = c("C","","D"),rel_widths = c(0.5,1,1,0.1))
+#cowplot:: plot_grid(P6,grid::nullGrob(),labels = c("F",""),nrow=1,rel_widths =c(0.3,1),label_size = 50,vjust=-1)
+
+```
+
+############################################################################################################################################################################################
